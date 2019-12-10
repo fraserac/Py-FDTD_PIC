@@ -4,10 +4,6 @@ This is the start of my FDTD code. So far 1D.
 
 This script will eventually just contain the update equations and animation
 
-
-DOES NOT CURRENTLY WORK FOR EPSILON NEGATIVE OR MU NEGATIVE MATERIALS OR NONLINEAR MATERIALS or complex 
-materials
-
 Courant number is 1, C delT = delZ
 
 """
@@ -16,20 +12,11 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import scipy as sci
 import math 
+from Material_Def import *
 
-c0 = 3e8   ##M MAKE THIS MORE ACCURATE LATER
+c0 = 1/(np.sqrt(permit_0*permea_0))   ##M MAKE THIS MORE ACCURATE LATER
 freq_in = 5e9
-refInd =1
 maxFreq = 10e9
-conduct = 0.5
-permit_0 = 8.85e-12
-permea_0 = 1.26e-6
-epsRe = 1
-epsIm = 1
-epsilon = 1#complex(epsRe,epsIm)
-muRe = 1
-muIm = 1
-mu = 1#complex(muRe, muIm)
 lamMin = c0/(np.sqrt(abs(epsRe)*abs(muRe))*maxFreq)
 Nlam = 30
 MaxGridSize = 1e5
@@ -38,11 +25,6 @@ delT = (dz)/(2*c0)
 NzSize =200
 Nz = NzSize
 
-MatEps = 3
-MatMu = 1
-
-
-CharImp =np.sqrt(permea_0)/np.sqrt(permit_0)#c0*delT/(dz)   ## En normalised to sqrt(epsion0/mu0)*E
 UpHyFree = (1/mu)/CharImp
 UpExFree = (1/epsilon)*CharImp 
 timeSteps =449#  (sim runs for timeStep*delT)
@@ -60,12 +42,6 @@ nzsrc = 50#round(Nz/2)
 Z = np.arange(0, Nz, dz)
 fig, ax = plt.subplots()
 line, = ax.plot(Ex)
-Ex_low_m2 =0.
-Ex_low_m1 =0.
-Ex_high_m1 = 0.
-Ex_high_m2 = 0.
-MaterialFrontEdge = 100  # Discrete tile where material begins (array index) 
-MaterialRearEdge = 120  # discrete tile where material ends 
 UpHyMat = np.zeros(Nz)#,dtype=complex)
 UpExMat = np.zeros(Nz)#,dtype=complex)
 
@@ -107,19 +83,10 @@ for count in range(timeSteps):
      # PERFECT REFLECTING BOUNDARY   
    #Ex[Nz-1] = Ex[Nz-1] + UpEx*(0-Hy[Nz-1])
    #Hy[1] = Hy[1] + UpHy*(Ex[1]-0)
-    Hy[49]= Hy[49] - UpHyMat[49]*np.exp(-(count - 30)*(count-30)/100)  #tf/sf correction Hy
+    Hy[nzsrc-1]= Hy[nzsrc-1] - UpHyMat[nzsrc-1]*np.exp(-(count - 30)*(count-30)/100)  #tf/sf correction Hy
       #tf/sf
     
-    #Absorbing boundary condition
-    """
-    Ex[0] = Ex_low_m2
-    Ex_low_m2 = Ex_low_m1
-    Ex_low_m1 = Ex[1]
     
-    Ex[Nz-1] = Ex_high_m2
-    Ex_high_m2 = Ex_high_m1
-    Ex_high_m1 = Ex[Nz-2]
-    """
     Ex[0] = Ex[1]
     Ex[Nz-1]=  Ex[Nz-2]
     
@@ -127,7 +94,7 @@ for count in range(timeSteps):
         Ex[nz] = Ex[nz] + UpExMat[nz]*(Hy[nz]-Hy[nz-1])
     
      #make T0 and tau into variables
-    Ex[50]= Ex[50] + np.exp(-(count +0.5 -(-0.5)-30)*(count +0.5 -(-0.5)-30)/100) #tf/sf correction Ex
+    Ex[nzsrc]= Ex[nzsrc] + np.exp(-(count +0.5 -(-0.5)-30)*(count +0.5 -(-0.5)-30)/100) #tf/sf correction Ex
     Ex_History[count] = np.insert(Ex_History[count], 0, Ex)
       
 
