@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-This is the start of my FDTD code. So far 1D.
+This is currently a 1D work in progress FDTD 
+
+This script is the engine that will calculate field updates and plotting functions
+
+The plotting and animation functionality may eventually be moved to a separate script.
 
 This script will eventually just contain the update equations and animation
 
@@ -13,7 +17,8 @@ import matplotlib.animation as animation
 import scipy as sci
 import math 
 from Material_Def import *
-
+#from MasterController import *
+"""
 c0 = 1/(np.sqrt(permit_0*permea_0))   ##M MAKE THIS MORE ACCURATE LATER
 freq_in = 5e9
 maxFreq = 10e9
@@ -35,35 +40,28 @@ if timeSteps > 5000:
     stahp
 
 
-Ex =np.zeros(Nz)#,dtype=complex)
-Hy=np.zeros(Nz)#,dtype=complex)
-Ex_History= [[]]*timeSteps
+
 nzsrc = 50#round(Nz/2)
-Z = np.arange(0, Nz, dz)
+"""
+Ex =[]#,dtype=complex)
+Hy=[]#,dtype=complex)
+Ex_History= [[]]
+Hy_History= [[]]  # feed in timesteps 
+
 fig, ax = plt.subplots()
 line, = ax.plot(Ex)
+"""
 UpHyMat = np.zeros(Nz)#,dtype=complex)
 UpExMat = np.zeros(Nz)#,dtype=complex)
+"""
 
-def init():
- line.set_ydata([])
- return line,
+
 
 #MAIN FDTD LOOP BASIC EDITION PRE-PRE-PRE-ALPHA
 #for loop over grid up to basic b.c. for update eqns, iterate through Nz with nz
 
-def sourceGen(T):
-    print(T)
-    pulse = np.sin(2*np.pi*freq_in*delT*2*T)
-    #pulse = np.exp(-((t-t0)/tau)**2)
-    return pulse 
 
 """
-for hh in range(Nz-1):
-    Ex[hh] =0
-for hhh in range(Nz-2):
-    Hy[hhh] =0
-  """  
 for k in range(0, MaterialFrontEdge-1):   
     UpExMat[k] =UpExFree 
     UpHyMat[k] =UpHyFree
@@ -73,8 +71,8 @@ for jj in range(MaterialFrontEdge-1, MaterialRearEdge-1):
 for ii in range(MaterialRearEdge-1, Nz):
     UpExMat[ii] = UpExFree
     UpHyMat[ii] = UpHyFree
-
-
+"""
+"""
 for count in range(timeSteps):
     #print(count)
     Hy[Nz-1] = Hy[Nz-2]
@@ -97,7 +95,48 @@ for count in range(timeSteps):
     Ex[nzsrc]= Ex[nzsrc] + np.exp(-(count +0.5 -(-0.5)-30)*(count +0.5 -(-0.5)-30)/100) #tf/sf correction Ex
     Ex_History[count] = np.insert(Ex_History[count], 0, Ex)
       
+"""
 
+def sourceGen(T):
+    print(T)
+    pulse = np.sin(2*np.pi*freq_in*delT*2*T)
+    #pulse = np.exp(-((t-t0)/tau)**2)
+    return pulse 
+
+
+def FieldInit(size, timeJumps):
+    Ex =np.zeros(size)#,dtype=complex)
+    Hy=np.zeros(size)#,dtype=complex)
+    Ex_History= [[]]*timeJumps
+    Hy_History= [[]]*timeJumps
+
+
+
+def HyBC(Size):
+    Hy[Size-1] = Hy[Size-2]
+    return Hy[Size-1]
+
+def HyUpdate():
+    pass
+
+def HyTfSfCorr():
+    pass
+
+def ExBC():
+    pass
+
+def ExUpdate():
+    pass
+
+def ExTfSfCorr():
+    pass
+
+def PrepAnim():
+    pass
+
+def init():
+ line.set_ydata([])
+ return line,
 
 def animate(i):
     line.set_ydata(Ex_History[i])  # update the data.
