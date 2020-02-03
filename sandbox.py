@@ -57,7 +57,7 @@ import natsort
 from decimal import *
 from math import *
 
-timeSteps = 500
+timeSteps = 2**8
 Nz = 200
 eps0 = sci.epsilon_0
 mu0 = sci.mu_0
@@ -79,7 +79,7 @@ probe=np.zeros(timeSteps)
 probeLoc = 75
 t = np.arange(0, timeSteps, 1)*dt
 fig, ax = plt.subplots()
-srcLoc =20
+srcLoc =50
 deltaT = (srcLoc*dz)/(2*c0)- dt/2
 materialFrontEdge = 70 # Discrete tile where material begins (array index)
 materialRearEdge = 120
@@ -134,10 +134,10 @@ def smoothTurnOn():
             Ezs.append(0)
             Hys.append(0)
             
-        for boo in range(timeSteps):
-            if(Hys[boo] ==0):
-                Hys[boo-1] =0
-                break    
+    for boo in range(timeSteps):
+        if(Hys[boo] ==0):
+            Hys[boo-1] =0
+            break    
     return Ezs, Hys   
 # FIX TURN OFF JITTER
 Ezs, Hys = smoothTurnOn()
@@ -147,7 +147,7 @@ Ezs, Hys = smoothTurnOn()
 
 
 
-verification(EpsRe,MuRe, false)
+verification(EpsRe,MuRe, False)
 
 
 

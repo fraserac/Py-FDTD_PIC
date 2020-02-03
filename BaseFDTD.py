@@ -18,9 +18,10 @@ import scipy as sci
 import math
 import matplotlib.pylab as plt
 import matplotlib.animation as animation
-from Material_Def import *
+#from Material_Def import *
 from scipy import signal as sign
 import sys 
+from decimal import *
 
   ##M MAKE THIS MORE ACCURATE LATER
 
@@ -97,62 +98,89 @@ def sourceGen2(T):
 
 
 
-def FieldInit(Size, timeJumps):
+def FieldInit(V,P):
     while (True):
         try:
-            if type(Size) != int:
+            if type(P.Nz) != int:
                 raise TypeError('Grid spaces must be a positive integer value')
                 break
-            if type(timeJumps) != int:
+            if type(P.timeSteps) != int:
                 raise TypeError('Number of timeSteps must be positive integer valued')
                 break
-            if timeJumps > 2**14:
+            if P.timeSteps > 2**14:
                 raise ValueError('timeSteps max too large')
                 break
-            if Size > 250:
+            if P.Nz > 250:
                 raise ValueError('Grid size too big')
                 break
-            if Size ==0:
+            if P.Nz ==0:
                 raise ValueError('Cannot have grid size 0!')
                 break
-            if timeJumps==0:
+            if P.timeSteps==0:
                 raise ValueError('Cannot have zero timeSteps!')
                 break
-            if Size < 0:
+            if P.Nz < 0:
                 raise ValueError('Grid size cannot be negative')
                 break
-            if timeJumps < 0:
+            if P.timeSteps < 0:
                 raise ValueError('Cannot have negative timeSteps')
                 break
             break
         except ValueError as e:
             print(e)
-            sys.exit()
-        
-    Ex =np.zeros(Size)#,dtype=complex)
-    Hy=np.zeros(Size)#,dtype=complex)
-    Ex_History= [[]]*timeJumps
-    Hy_History= [[]]*timeJumps
-    Hys = []*timeJumps
-    Ezs = []*timeJumps
-    return Ex, Ex_History, Hy, Hy_History,Hys, Ezs
-   
-    
-def SourceCalc(UpHyMat, UpExMat, Nz): # this function will run the FDTD over just the initial media and measure the points at x1 over t
+            sys.exit() 
+    V.Ex =np.zeros(P.Nz)#,dtype=complex)
+    V.Hy=np.zeros(P.Nz)#,dtype=complex)
+    V.Ex_History= [[]]*P.timeSteps
+    V.Hy_History= [[]]*P.timeSteps
+    return V.Ex, V.Ex_History, V.Hy, V.Hy_History
+
+
+def SmoothTurnOn(V,P):
+    ppw =  P.c0 /(P.freq_in*P.dz)
+    for timer in range(P.timeSteps):
+        if(timer*P.delT < P.period):
+            V.Exs.append(float(Decimal(np.sin(2.0*np.pi/ppw*(P.courantNo*timer)))))
+            V.Hys.append(float(Decimal(np.sin(2.0*np.pi/ppw*(P.courantNo*(timer+1))))))
+        elif(timer*P.delT >= P.period):  
+            V.Exs.append(0)
+            V.Hys.append(0)
+    return V.Exs, V.Hys   
+# FIX TURN OFF JITTER
+
+
+def EmptySpaceCalc(V,P): # this function will run the FDTD over just the initial media and measure the points at x1 over t
     #material to find transmission and reflection vals
-    UpHyMat = np.zeros(Nz) #THIS IS INITIALISER DON'T PASS THROUGH FOR LOOP
-    UpExMat = np.zeros(Nz)
+    UpHyMat = np.zeros(P.Nz) #THIS IS INITIALISER DON'T PASS THROUGH FOR LOOP
+    UpExMat = np.zeros(P.Nz)
     
-    UpHyBackground = (1/CharImp)*courantNo
-    UpExBackground = CharImp*courantNo
+    UpHyBackground = (1/P.CharImp)*P.courantNo
+    UpExBackground = P.CharImp*P.courantNo
 
 
-    for jl in range(0, Nz):  
+    for jl in range(0, P.Nz):  
         UpExMat[jl] =UpExBackground
         UpHyMat[jl] =UpHyBackground
-        
-    x1Loc = 80 # be careful with thin regions
-    return UpHyMat, UpExMat, x1Loc
+ 
+    return UpHyMat, UpExMat
+
+
+
+def Material(V,P):
+    for kj in range(P.Nz):
+            if(kj < P.materialFrontEdge):
+                V.epsilon[kj] = 1
+                V.mu[kj] = 1
+            if(kj >= P.materialFrontEdge and kj < P.materialRearEdge):
+                V.epsilon[kj] = P.epsRe
+                V.mu[kj] = P.muRe
+            if(kj>= P.materialRearEdge):
+                V.epsilon[kj] = 1
+                V.mu[kj] = 1 
+    return V.epsilon, V.mu
+
+    
+
   
 def lossyMat():
     #Calculate change to co-efficients
@@ -166,59 +194,52 @@ def lossyMat():
 
 #PASS TO MASTER CONTROLLER, THEN THROUGH TO UPDATECOEF, WHERE THE NEW CO-EFF WILL DIVIDE uPEX AND UPHY at mat, 
 
-def UpdateCoef(UpHyMat, UpExMat, Nz):# POTENTIAL ISSUE, COURANT NO AND DOUBLE DEFINITION OF MU EPS.
+def UpdateCoef(V,P):# POTENTIAL ISSUE, COURANT NO AND DOUBLE DEFINITION OF MU EPS.
     #CHECK COURANT NO.
-    UpHyBackground = (1/CharImp)*courantNo
-    UpExBackground = CharImp*courantNo
-    print(UpExBackground)
-    UpHyMat = np.zeros(Nz) #THIS IS INITIALISER DON'T PASS THROUGH FOR LOOP
-    UpExMat = np.zeros(Nz)
-    for k in range(0, MaterialFrontEdge-1):  
-        UpExMat[k] =UpExBackground
-        UpHyMat[k] =UpHyBackground
-    for jj in range(MaterialFrontEdge-1, MaterialRearEdge-1):
-        UpExMat[jj] = (UpExBackground/MatEps)
-        UpHyMat[jj] = (UpHyBackground/MatMu)
-    for ii in range(MaterialRearEdge-1, Nz):
-        UpExMat[ii] = UpExBackground
-        UpHyMat[ii] = UpHyBackground
-   
+    UpHyBackground = (1/P.CharImp)*P.courantNo
+    UpExBackground = P.CharImp*P.courantNo
+    UpHyMat = np.zeros(P.Nz) #THIS IS INITIALISER DON'T PASS THROUGH FOR LOOP
+    UpExMat = np.zeros(P.Nz)
+    for k in range(P.Nz):
+        UpExMat[k]= UpExBackground/V.epsilon[k]
+        UpHyMat[k]= UpHyBackground/V.mu[k]
+
     return UpHyMat, UpExMat  
 
 
 
-def HyBC(Hy, size):
-    Hy[size-1] = Hy[size-2]
-    return Hy[size-1]
+def HyBC(V,P):
+    V.Hy[P.Nz-1] = V.Hy[P.Nz-2]
+    return V.Hy[P.Nz-1]
    
 # FOR HY AND EX update/EZ? feed in eSelfCo and hSelfCo
-def HyUpdate(Hy, Ex, UpHyMat, size):
-    for nz in range(0, size-1):
-        Hy[nz] = Hy[nz] + (Ex[nz+1]-Ex[nz])*UpHyMat[nz]
-    return Hy[0:size-2]
+def HyUpdate(V,P):
+    for nz in range(0, P.Nz-1):
+        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+    return V.Hy[0:P.Nz-2]
 
-def HyTfSfCorr(HyTfsf, counter, UpHyMatTfsf, Ezs):
-     HyTfsf -= Ezs[counter]*UpHyMatTfsf#*np.exp(-(counter - 30)*(counter-30)/100)
+def HyTfSfCorr(V, P, counts):
+     V.Hy[P.nzsrc-1] -= V.Exs[counts]/P.CharImp#*np.exp(-(counter - 30)*(counter-30)/100)
      #link to sourceGen for harmonic or ricker or gaussian etc 
      #np.sin((2*np.pi)/Nlam*(courantNo))
-     return HyTfsf
+     return V.Hy[P.nzsrc-1]
    
-def ExBC(Ex, size):
-    Ex[0] = Ex[1]
-    Ex[size-1]=  Ex[size-2]
-    return Ex[0], Ex[size-1]
+def ExBC(V, P):
+    V.Ex[0] = V.Ex[1]
+    V.Ex[P.Nz-1]=  V.Ex[P.Nz-2]
+    return V.Ex[0], V.Ex[P.Nz-1]
    
 
-def ExUpdate(Ex, UpExMat, Hy,  size):
-    for nz in range(1, size-1):
-        Ex[nz] = Ex[nz] + (Hy[nz]-Hy[nz-1])*UpExMat[nz]#*UpExMat[nz]
-    return Ex[1:size-2]    
+def ExUpdate(V, P):
+    for nz in range(1, P.Nz-1):
+        V.Ex[nz] = V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]#*UpExMat[nz]
+    return V.Ex[1:P.Nz-2]    
 
 
-def ExTfSfCorr(ExTfsf, counter, nzsrc, UpExMatTfsf, Hys):
+def ExTfSfCorr(V,P, counts):
    # ExTfsf= ExTfsf + np.exp(-(counter +0.5 -(-0.5)-30)*(counter +0.5 -(-0.5)-30)/100)
-    ExTfsf += Hys[counter]# *np.exp(-(counter +0.5 -(-0.5)-30)*(counter +0.5 -(-0.5)-30)/100)
-    return ExTfsf
+    V.Ex[P.nzsrc] += V.Hys[counts]# *np.exp(-(counter +0.5 -(-0.5)-30)*(counter +0.5 -(-0.5)-30)/100)
+    return V.Ex[P.nzsrc]
 
 
 

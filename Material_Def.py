@@ -7,14 +7,6 @@ import scipy.constants as sci
 #from MasterController import *
 
 
-UpHyMat =[]
-UpExMat =[]
-Ex =[]#,dtype=complex)
-Hy=[]#,dtype=complex)
-Ex_History= [[]]
-Hy_History=[[]]
-Hys = []
-Exs =[]
 permit_0 = sci.epsilon_0
 permea_0 = sci.mu_0
 epsRe =9
@@ -23,31 +15,43 @@ muRe = 1
 muIm = 0
 
 c0 = sci.speed_of_light
-freq_in = 4e9
+freq_in = 1e9
 
 ### WILL NEED MAX FREQ WHEN HIGHER HARMONICS ARE PRESENT
-lamMin = c0/(np.sqrt(abs(epsRe)*abs(muRe))*freq_in)
-Nlam = 20
+lamMin = c0/freq_in
+Nlam = 20*np.sqrt(epsRe*muRe)
 dz =lamMin/Nlam  
-delT = (dz)/(c0)   # LOOK INTO HOW DZ AND DELT ARE USED, COURANT NO?
-courantNo = c0*delT/dz
+courantNo = 1
+delT = (courantNo*dz)/(c0)   # LOOK INTO HOW DZ AND DELT ARE USED, COURANT NO?
+
 CharImp =np.sqrt(permea_0)/np.sqrt(permit_0)
 MaterialFrontEdge = 100  # Discrete tile where material begins (array index)
 MaterialRearEdge = 130
-
+period = 1/freq_in
 
 Nz = 200   #Grid size
 
 timeSteps =2**8
 t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
 
-nzsrc = 50 # Position of source 
-
+nzsrc = 10 # Position of source 
+x1Loc = 80
 
 
 x1ColBe=[[]]*timeSteps 
 x1ColAf=[[]]*timeSteps
 
+UpHyMat =np.zeros(Nz)
+UpExMat =np.zeros(Nz)
+Ex =np.zeros(Nz)#,dtype=complex)
+Hy=np.zeros(Nz)#,dtype=complex)
+Ex_History= [[]]*timeSteps
+Hy_History= [[]]*timeSteps
+Hys = []
+Exs = []
+
+epsilon = np.ones(Nz)
+mu = np.ones(Nz)
 
     
     #set up class for FDTD parameters, so mastercontroller is unit testable

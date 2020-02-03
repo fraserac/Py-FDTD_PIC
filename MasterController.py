@@ -12,7 +12,7 @@ import scipy as sci
 import matplotlib.pylab as plt
 #import matplotlib.animation as animation
 import math
-from BaseFDTD import FieldInit, HyBC, FieldInit, HyBC, HyUpdate, HyTfSfCorr, ExBC, ExUpdate, ExTfSfCorr, UpdateCoef, SourceCalc
+from BaseFDTD import FieldInit, Material, SmoothTurnOn, HyBC, FieldInit, HyBC, HyUpdate, HyTfSfCorr, ExBC, ExUpdate, ExTfSfCorr, UpdateCoef, EmptySpaceCalc
 import BaseFDTD as bsfdtd
 from Material_Def import *
 #from moviepy.editor import VideoClip
@@ -28,7 +28,7 @@ from TransformHandler import FourierTrans
 
 
 class Variables(object):
-    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs):
+    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu):
         self.UpHyMat = UpHyMat
         self.UpExMat = UpExMat
         self.Ex = Ex
@@ -37,6 +37,10 @@ class Variables(object):
         self.Hy_History = Hy_History
         self.Exs = Exs
         self.Hys = Hys
+        self.x1ColBe = x1ColBe
+        self.x1ColAf = x1ColAf
+        self.epsilon = epsilon
+        self.mu = mu
         
     def __str__(self):
         return 'Contains data that will change during sim'
@@ -48,25 +52,30 @@ class Variables(object):
     # methods to handle user input errors during instantiation.
     
 class Params(object):
-    def __init__(self, epsRe, muRe, f_in, lMin, nlm, dz, dt, crntNo, matRear, matFront, gridNo, timeSteps):
-        self.permit_0 = 8.854187817620389e-12#
-        self.permea_0 =1.2566370614359173e-06
-        self.c0 = 299792458.0
+    permit_0 =8.854187817620389e-12
+    permea_0 =1.2566370614359173e-06
+    CharImp =np.sqrt(permea_0/permit_0)
+    c0 = 299792458.0
+    
+    def __init__(self, epsRe, muRe, f_in, lMin, nlm, dz, delT, courantNo, matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period):
         self.epsRe = epsRe
         self.muRe = muRe
         self.freq_in = f_in
         self.lamMin = lMin
-        self.Nlam = Nlm
+        self.Nlam = nlm
         self.dz = dz
-        self.delT = dt
-        self.courantNo= crntNo
-        self.MaterialFrontEdge = matFront
-        self.MaterialRearEdge = matRear
+        self.delT = delT
+        self.courantNo= courantNo
+        self.materialFrontEdge = matFront
+        self.materialRearEdge = matRear
         self.Nz = gridNo
         self.timeSteps = timeSteps
+        self.x1Loc = x1Loc
+        self.nzsrc = nzsrc
+        self.period = period
     
     def __repr__(self):
-        return (f'{self.__class__.__name__}(', "Real Epsilon:",f'{self.epsRe!r}, "Real Mu", 'f'{self.muRe!r})
+        return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
     
     def __str__(self):
         return 'Class containing all values that remain constant throughout a sim' 
@@ -95,48 +104,97 @@ class Params(object):
 #FUNCTION THAT LOADS IN MATERIAL DEF, CAN BE PASSED IN AS A FIRST CLASS FUNCTION, RETURNS ALL
 #PARAMETERS.
 def Controller(P, V):  #Needs dot syntax
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Hys, V.Ezs= FieldInit(Nz, timeSteps)
-    P.UpHyMat, P.UpExMat, x1Loc = SourceCalc(UpHyMat, UpExMat, Nz)
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History = FieldInit(V,P)
+    V.Exs, V.Hys = SmoothTurnOn(V,P)
     
-    for counts in range(timeSteps):   ### for media one transmission
-       Hy[Nz-1] = HyBC(Hy, Nz)
-       Hy[0:Nz-2] = HyUpdate(Hy, Ex, UpHyMat, Nz)
-       Hy[nzsrc-1] = HyTfSfCorr(Hy[nzsrc-1], counts, UpHyMat[nzsrc-1])
-       Ex[0], Ex[Nz-1] = ExBC(Ex, Nz)
-       Ex[1:Nz-2]= ExUpdate(Ex,UpExMat, Hy,  Nz)
-       Ex[nzsrc] = ExTfSfCorr(Ex[nzsrc], counts, nzsrc, UpExMat[nzsrc], Hys)
-       Ex_History[counts] = np.insert(Ex_History[counts], 0, Ex)
-       x1ColBe[counts] = Ex_History[counts][x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
+    V.UpHyMat, V.UpExMat = EmptySpaceCalc(V,P)   #RENAME EMPTY SPACE CALC
     
+    for counts in range(P.timeSteps):   ### for media one transmission
+       #V.Hy[P.Nz-1] = HyBC(V,P)
+       V.Hy[0:P.Nz-2] = HyUpdate(V,P)
+       V.Hy[P.nzsrc-1] = HyTfSfCorr(V,P, counts)
+       V.Ex[P.nzsrc] = ExTfSfCorr(V,P, counts)
+       V.Ex[0], V.Ex[P.Nz-1] = ExBC(V,P)
+       V.Ex[1:P.Nz-2]= ExUpdate(V,P) 
+       V.Ex_History[counts] = np.insert(V.Ex_History[counts], 0, V.Ex)
+       V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
     
-    Ex, Ex_History, Hy, Hy_History, Hys, Ezs= FieldInit(Nz, timeSteps)
-    UpHyMat, UpExMat = UpdateCoef(UpHyMat, UpExMat, Nz)
+    V.epsilon, V.mu  = Material(V,P)
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History= FieldInit(V,P)
+    V.Exs, V.Hys = SmoothTurnOn(V,P)
+    V.UpHyMat, V.UpExMat = UpdateCoef(V,P)
     
-    for count in range(timeSteps):   
-       Hy[Nz-1] = HyBC(Hy, Nz)
-       Hy[0:Nz-2] = HyUpdate(Hy, Ex, UpHyMat, Nz)
-       Hy[nzsrc-1] = HyTfSfCorr(Hy[nzsrc-1], count, UpHyMat[nzsrc-1])
-       Ex[0], Ex[Nz-1] = ExBC(Ex, Nz)
-       Ex[1:Nz-2]= ExUpdate(Ex,UpExMat, Hy,  Nz)
-       Ex[nzsrc] = ExTfSfCorr(Ex[nzsrc], count, nzsrc, UpExMat[nzsrc], Hys)  # DON'T FEED IN NZSRC ONCE COMPLETE
-       Ex_History[count] = np.insert(Ex_History[count], 0, Ex)
-       x1ColAf[count]= Ex_History[count][x1Loc]
+    for count in range(P.timeSteps):   ### for media one transmission
+       #V.Hy[P.Nz-1] = HyBC(V,P)
+       V.Hy[0:P.Nz-2] = HyUpdate(V,P)
+       V.Hy[P.nzsrc-1] = HyTfSfCorr(V,P, count)
+       V.Ex[P.nzsrc] = ExTfSfCorr(V,P, count)
+       V.Ex[0], V.Ex[P.Nz-1] = ExBC(V,P)
+       V.Ex[1:P.Nz-2]= ExUpdate(V,P)
+       V.Ex_History[count] = np.insert(V.Ex_History[counts], 0, V.Ex)
+       V.x1ColAf[count]= V.Ex_History[count][P.x1Loc]
        #Hy_History[count] = np.insert(Hy_History[count], 0, Hy)
        
        
     #FFT x1ColBe and x1ColAf? 
     
-    transWithExp, sig1Freq, sig2Freq, sample_freq = FourierTrans(x1ColBe, x1ColAf, x1Loc, t, delT)
+   # transWithExp, sig1Freq, sig2Freq, sample_freq = FourierTrans(x1ColBe, x1ColAf, x1Loc, t, delT)
 # should have constant val of transmission over all freq range of source, will need harmonic source?   
 
+    return P, V
 
-params = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps)    
-variables = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History)
-Controller(params, variables)
-"""
+P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period)    
+V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu)
+P, V = Controller(P, V)
+
 #Now we prepare to make the video including I/O stuff like setting up a new directory in the current working directory and 
 
 #deleting the old directory from previous run and overwriting.
+
+
+
+
+####variable exposes
+
+UpHyMat = V.UpHyMat
+UpExMat = V.UpExMat
+Ex = V.Ex
+Hy = V.Hy
+Ex_History = V.Ex_History
+Hy_History = V.Hy_History
+Exs = V.Exs
+Hys = V.Hys
+x1ColBe = V.x1ColBe
+x1ColAf = V.x1ColAf
+epsilon = V.epsilon
+mu = V.mu
+
+
+###parameters
+
+permit_0 =P.permit_0
+permea_0 = P.permea_0
+CharImp =P.CharImp
+c0 = P.c0
+epsRe = P.epsRe
+muRe =  P.muRe
+freq_in =  P.freq_in
+lamMin = P.lamMin
+Nlam = P.Nlam
+dz = P.dz
+delT =  P.delT
+courantNo=  P.courantNo
+materialFrontEdge = P.materialFrontEdge
+materialRearEdge = P.materialRearEdge
+Nz = P.Nz
+timeSteps = P.timeSteps
+x1Loc = P.x1Loc
+nzsrc = P.nzsrc
+period = P.period
+
+######
+
+
 """
 
 
@@ -144,6 +202,10 @@ Controller(params, variables)
 ##########################
 ############################### MAYBE MOVE STUFF BELOW TO A NEW SCRIPT?#
 """
+
+
+
+
 fig, ax = plt.subplots()
 interval = 10
 my_path = os.getcwd() 
@@ -171,13 +233,13 @@ else:
 
 #these plots are converted to png files and saved in the new folder in the working directory
 """
-for i in range(0, timeSteps, interval):
-    print(str.format('{0:.2f}', (100/(timeSteps/(i+1)))),"% complete")
+for i in range(0, P.timeSteps, interval):
+    print(str.format('{0:.2f}', (100/(P.timeSteps/(i+1)))),"% complete")
     ax.clear()
-    ax.plot(Ex_History[i])    
+    ax.plot(V.Ex_History[i])    
     ax.set_ylim(-2, 2)
-    ax.set_xlim(0, Nz)
-    ax.axvspan(MaterialFrontEdge, MaterialRearEdge, alpha=0.5, color='green')
+    ax.set_xlim(0, P.Nz)
+    ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
     plt.savefig(path + "/" + str(i) + ".png")
 
 
@@ -204,4 +266,3 @@ for image in images:
 cv2.destroyAllWindows()
 video.release()
 plt.close()
-"""
