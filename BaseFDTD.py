@@ -171,26 +171,22 @@ def Material(V,P):
             if(kj < P.materialFrontEdge):
                 V.epsilon[kj] = 1
                 V.mu[kj] = 1
+                V.UpExHcompsCo[kj] = 1
+                V.UpExSelf[kj] =1
             if(kj >= P.materialFrontEdge and kj < P.materialRearEdge):
                 V.epsilon[kj] = P.epsRe
                 V.mu[kj] = P.muRe
+                V.UpExHcompsCo[kj] = P.eHcompsCo
+                V.UpExSelf[kj] = P.eSelfCo
             if(kj>= P.materialRearEdge):
                 V.epsilon[kj] = 1
                 V.mu[kj] = 1 
-    return V.epsilon, V.mu
+                V.UpExHcompsCo[kj] = 1
+                V.UpExSelf[kj] =1
+    return V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf
 
     
 
-  
-def lossyMat():
-    #Calculate change to co-efficients
-    # eLoss = sigma_e dt, mLoss = sigma_m dt 
-    #for now explicit values
-    eLoss =0.001
-    mLoss = 0
-    eSelfCo = (1-eLoss)/(1+eLoss)#
-    eHcompsCo = 1+eLoss
-    return eSelfCo, EHcompsCo
 
 #PASS TO MASTER CONTROLLER, THEN THROUGH TO UPDATECOEF, WHERE THE NEW CO-EFF WILL DIVIDE uPEX AND UPHY at mat, 
 
@@ -200,11 +196,14 @@ def UpdateCoef(V,P):# POTENTIAL ISSUE, COURANT NO AND DOUBLE DEFINITION OF MU EP
     UpExBackground = P.CharImp*P.courantNo
     UpHyMat = np.zeros(P.Nz) #THIS IS INITIALISER DON'T PASS THROUGH FOR LOOP
     UpExMat = np.zeros(P.Nz)
+    #UpHySelf = np.zeros(P.Nz)
+    #UpExSelf = np.zeros(P.Nz)
+    
     for k in range(P.Nz):
         UpExMat[k]= UpExBackground/V.epsilon[k]
         UpHyMat[k]= UpHyBackground/V.mu[k]
 
-    return UpHyMat, UpExMat  
+    return UpHyMat, UpExMat
 
 
 
@@ -232,7 +231,7 @@ def ExBC(V, P):
 
 def ExUpdate(V, P):
     for nz in range(1, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]#*UpExMat[nz]
+        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*V.UpExHcompsCo[nz]#*UpExMat[nz]
     return V.Ex[1:P.Nz-2]    
 
 

@@ -15,6 +15,7 @@ import math
 from BaseFDTD import FieldInit, Material, SmoothTurnOn, HyBC, FieldInit, HyBC, HyUpdate, HyTfSfCorr, ExBC, ExUpdate, ExTfSfCorr, UpdateCoef, EmptySpaceCalc
 import BaseFDTD as bsfdtd
 from Material_Def import *
+from Validation_Physics import VideoMaker 
 #from moviepy.editor import VideoClip
 #from moviepy.video.io.bindings import mplfig_to_npimage
 #import moviepy.editor as mv
@@ -28,9 +29,11 @@ from TransformHandler import FourierTrans
 
 
 class Variables(object):
-    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu):
+    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf):
         self.UpHyMat = UpHyMat
         self.UpExMat = UpExMat
+        self.UpExHcompsCo = UpExHcompsCo
+        self.UpExSelf = UpExSelf
         self.Ex = Ex
         self.Hy = Hy
         self.Ex_History = Ex_History
@@ -57,7 +60,7 @@ class Params(object):
     CharImp =np.sqrt(permea_0/permit_0)
     c0 = 299792458.0
     
-    def __init__(self, epsRe, muRe, f_in, lMin, nlm, dz, delT, courantNo, matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period):
+    def __init__(self, epsRe, muRe, f_in, lMin, nlm, dz, delT, courantNo, matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo):
         self.epsRe = epsRe
         self.muRe = muRe
         self.freq_in = f_in
@@ -73,28 +76,15 @@ class Params(object):
         self.x1Loc = x1Loc
         self.nzsrc = nzsrc
         self.period = period
+        self.eLoss = eLoss
+        self.eSelfCo = eSelfCo
+        self.eHcompsCo = eHcompsCo
     
     def __repr__(self):
         return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
     
     def __str__(self):
         return 'Class containing all values that remain constant throughout a sim' 
-
-#method to handle user input errors.
-        
-#instantiate objects Params and Vars 
-        
-
-    
-#convert mast cont to def and feed in instances, adjust code accordingly on baseFDTD and mast
-#set up unit tests, get code functioning again. 
-        
-    
-    
-    
-
-  # MATERIAL PARAMETERS WILL CHANGE WITH POWER CHANGE BUT FOR NOW KEEP CONSTANT
-
 
 """
 #Next, loop the FDTD over the time domain range (in integer steps, specific time would be delT*timeStep include this on plots later?)
@@ -119,7 +109,7 @@ def Controller(P, V):  #Needs dot syntax
        V.Ex_History[counts] = np.insert(V.Ex_History[counts], 0, V.Ex)
        V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
     
-    V.epsilon, V.mu  = Material(V,P)
+    V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf  = Material(V,P)
     V.Ex, V.Ex_History, V.Hy, V.Hy_History= FieldInit(V,P)
     V.Exs, V.Hys = SmoothTurnOn(V,P)
     V.UpHyMat, V.UpExMat = UpdateCoef(V,P)
@@ -143,15 +133,15 @@ def Controller(P, V):  #Needs dot syntax
 
     return P, V
 
-P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period)    
-V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu)
+P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo)    
+V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf)
 P, V = Controller(P, V)
 
 #Now we prepare to make the video including I/O stuff like setting up a new directory in the current working directory and 
 
 #deleting the old directory from previous run and overwriting.
 
-
+VideoMaker(P, V)
 
 
 ####variable exposes
@@ -195,74 +185,7 @@ period = P.period
 ######
 
 
-"""
-
-
-###############
-##########################
-############################### MAYBE MOVE STUFF BELOW TO A NEW SCRIPT?#
-"""
 
 
 
 
-fig, ax = plt.subplots()
-interval = 10
-my_path = os.getcwd() 
-newDir = "Ex fields"
-
-path = os.path.join(my_path, newDir)
-
-try:     ##### BE VERY CAREFUL! THIS DELETES THE FOLDER AT THE PATH DESTINATION!!!!
-    shutil.rmtree(path)
-except OSError as e:
-    print ("Tried to delete folder Error: no such directory exists")
-    
-    
-try:
-    os.mkdir(path)
-except OSError:
-    print ("Creation of the directory %s failed" %path)
-else:
-    print ("Successfully created the directory %s " %path)
-    
-    
-"""
-#Next up we iterate through the time steps of Ex_History (an array of arrays containing all y data from each time step)
-#and create a plot for each time step, including the dielectric material. 
-
-#these plots are converted to png files and saved in the new folder in the working directory
-"""
-for i in range(0, P.timeSteps, interval):
-    print(str.format('{0:.2f}', (100/(P.timeSteps/(i+1)))),"% complete")
-    ax.clear()
-    ax.plot(V.Ex_History[i])    
-    ax.set_ylim(-2, 2)
-    ax.set_xlim(0, P.Nz)
-    ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
-    plt.savefig(path + "/" + str(i) + ".png")
-
-
-"""
-#Next we collect all the images in the new directory and sort them numerically, then use OpenCV to create a 24fps video
-"""
-
-image_folder = path
-video_name = 'Ex in 1D FDTD.mp4'
-
-images = [img for img in os.listdir(image_folder) if img.endswith(".png")]
-
-images = natsort.natsorted(images)  # without this python does a weird alphabetical sort that doesn't work
-    
-
-frame = cv2.imread(os.path.join(image_folder, images[0]))
-height, width, layers = frame.shape
-
-video = cv2.VideoWriter(video_name, 0, 12, (width,height))
-for image in images:
-    video.write(cv2.imread(os.path.join(image_folder, image)))
-    #print(image)
-
-cv2.destroyAllWindows()
-video.release()
-plt.close()

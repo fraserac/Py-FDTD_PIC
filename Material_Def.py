@@ -26,7 +26,7 @@ delT = (courantNo*dz)/(c0)   # LOOK INTO HOW DZ AND DELT ARE USED, COURANT NO?
 
 CharImp =np.sqrt(permea_0)/np.sqrt(permit_0)
 MaterialFrontEdge = 100  # Discrete tile where material begins (array index)
-MaterialRearEdge = 130
+MaterialRearEdge = 170
 period = 1/freq_in
 
 Nz = 200   #Grid size
@@ -37,11 +37,16 @@ t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CL
 nzsrc = 10 # Position of source 
 x1Loc = 80
 
+eLoss =0.02
+mLoss = 0
+eSelfCo = (1-eLoss)/(1+eLoss)#
+eHcompsCo = 1/(1+eLoss)
 
 x1ColBe=[[]]*timeSteps 
 x1ColAf=[[]]*timeSteps
-
-UpHyMat =np.zeros(Nz)
+UpHySelf= np.zeros(Nz)
+UpExSelf = np.zeros(Nz)
+UpExHcompsCo =np.zeros(Nz)
 UpExMat =np.zeros(Nz)
 Ex =np.zeros(Nz)#,dtype=complex)
 Hy=np.zeros(Nz)#,dtype=complex)
