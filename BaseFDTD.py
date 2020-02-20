@@ -168,22 +168,28 @@ def EmptySpaceCalc(V,P): # this function will run the FDTD over just the initial
 
 def Material(V,P):
     for kj in range(P.Nz):
-            if(kj < P.materialFrontEdge):
+            if(kj < P.materialFrontEdge):  
                 V.epsilon[kj] = 1
                 V.mu[kj] = 1
                 V.UpExHcompsCo[kj] = 1
                 V.UpExSelf[kj] =1
+                V.UpHyEcompsCo[kj] =1
+                V.UpHySelf[kj] = 1
             if(kj >= P.materialFrontEdge and kj < P.materialRearEdge):
                 V.epsilon[kj] = P.epsRe
                 V.mu[kj] = P.muRe
-                V.UpExHcompsCo[kj] = P.eHcompsCo
-                V.UpExSelf[kj] = P.eSelfCo
+                V.UpExHcompsCo[kj] = 1
+                V.UpExSelf[kj] = 1
+                V.UpHyEcompsCo[kj] =P.hEcompsCo
+                V.UpHySelf[kj] = P.hSelfCo
             if(kj>= P.materialRearEdge):
                 V.epsilon[kj] = 1
                 V.mu[kj] = 1 
                 V.UpExHcompsCo[kj] = 1
                 V.UpExSelf[kj] =1
-    return V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf
+                V.UpHyEcompsCo[kj] =1
+                V.UpHySelf[kj] = 1
+    return V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf, V.UpHyEcompsCo, V.UpHySelf
 
     
 
@@ -213,8 +219,8 @@ def HyBC(V,P):
    
 # FOR HY AND EX update/EZ? feed in eSelfCo and hSelfCo
 def HyUpdate(V,P):
-    for nz in range(0, P.Nz-1):
-        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+    for nz in range(0, P.Nz-1):   #START AFTER CPML AND FINISH BEFORE
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]
     return V.Hy[0:P.Nz-2]
 
 def HyTfSfCorr(V, P, counts):
@@ -241,6 +247,66 @@ def ExTfSfCorr(V,P, counts):
     return V.Ex[P.nzsrc]
 
 
+
+##### CPML STUFF 
+    
+def CPML_FieldInit(V,P, C_V, C_P):#INITIALISE FIELD PARAMS 
+    C_V.kappa_Ex =1
+    C_V.kappa_Hy = 1
+    C_V.psi_Ex =np.zeros(P.Nz)
+    C_V.psi_Hy = np.zeros(P.Nz)
+    C_V.alpha_Ex= np.zeros(P.Nz)
+    C_V.alpha_Hy= np.zeros(P.Nz)
+    C_V.sigmaEx =np.zeros(P.Nz)   # specific spatial value of conductivity 
+    C_V.sigmaHy = np.zeros(P.Nz)
+    C_V.beX =np.zeros(P.Nz)#np.exp(-(sigmaEx/(permit_0*kappa_Ex) + alpha_Ex/permit_0 )*delT)
+    C_V.bmY =np.zeros(P.Nz)#np.exp(-(sigmaHy/(permea_0*kappa_Hy) + alpha_Hy/permea_0 )*delT)
+    C_V.ceX = np.zeros(P.Nz)
+    C_V.cmY = np.zeros(P.Nz)
+    return C_V
+    
+def CPML_ScalingCalc(V, P, C_V, C_P):
+    for nz in range(0, P.pmlWidth) + range(P.Nz-1-P.pmlWidth, P.Nz-1):
+        C_V.sigmaEx[nz] =(((nz-0.5*P.dz)/P.pmlWidth)**(C_P.r_scale))*C_P.sigmaEMax
+        C_V.sigmaHy[nz] =((P.CharImp**2)*((nz)/P.pmlWidth)**(C_P.r_scale))*C_P.sigmaHMax
+        C_V.alpha_Ex[nz] = (1-((nz-0.5*P.dz)/P.pmlWidth)**C_P.r_a_scale)*C_P.alphaMax
+        C_V.alpha_Hy[nz] =((P.CharImp**2)*(1-(nz)/P.pmlWidth)**(C_P.r_a_scale))*C_P.alphaMax
+    return C_V.sigmaEx, C_V.sigmaHy, C_V.alpha_Ex,  C_V.alpha_Hy
+    
+    
+def CPML_Ex_RC_Define(V, P, C_V, C_P):
+    for nz in range(0, P.pmlWidth) + range(P.Nz-1-P.pmlWidth, P.Nz-1):
+        C_V.beX[nz] = np.exp(-(C_V.sigmaEx[nz]/(P.permit_0*C_V.kappa_Ex) + C_V.alpha_Ex[nz]/P.permit_0)*P.delT)
+        C_V.ceX[nz] = (C_V.beX[nz]-1)*(C_V.sigmaEx[nz]/(C_V.kappa_Ex*(C_V.sigmaEx[nz]+C_V.alpha_Ex[nz]*C_V.kappa_Ex)))
+    return C_V.beX, C_V.ceX
+
+def CPML_HY_RC_Define(V, P, C_V, C_P):
+    for nz in range(0, P.pmlWidth) + range(P.Nz-1-P.pmlWidth, P.Nz-1):
+        C_V.bmY[nz] = np.exp(-(C_V.sigmaEx[nz]/(P.permit_0*C_V.kappa_Ex) + C_V.alpha_Ex[nz]/P.permit_0)*P.delT)
+        C_V.cmY[nz] = (C_V.beX[nz]-1)*(C_V.sigmaEx[nz]/(C_V.kappa_Ex*(C_V.sigmaEx[nz]+C_V.alpha_Ex[nz]*C_V.kappa_Ex)))
+    return C_V.bmY, C_V.cmY
+
+def CPML_Ex_Update_Coef(V,P, C_V, C_P):
+    pass
+
+def CPML_Hy_Update_Coef(V,P, C_V, C_P):
+    pass
+    
+def CPML_Psi_e_Update(V,P, C_V, C_P):   # recursive convolution for E field REF
+    pass
+
+def CPML_Psi_m_Update(V,P, C_V, C_P):   # recursive convolution for H field REF
+    pass
+
+
+def CPML_HyUpdate(V,P, C_V, C_P):
+    for nz in range(0, P.pmlWidth) + range(P.Nz-1-P.pmlWidth, P.Nz-1):
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz] # + Cc Psi
+    return V.Hy[0:P.Nz-2]
+
+
+def CPML_ExUpdate(V,P, C_V, C_P):
+    pass
 
 """
 Issue: feed fields back and forth. RETURN uphy etc etc , call
