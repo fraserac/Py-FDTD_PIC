@@ -12,8 +12,8 @@ import scipy as sci
 import matplotlib.pylab as plt
 #import matplotlib.animation as animation
 import math
-from BaseFDTD import FieldInit, Material, SmoothTurnOn, HyBC, FieldInit, HyBC, HyUpdate, HyTfSfCorr, ExBC, ExUpdate, ExTfSfCorr, UpdateCoef, EmptySpaceCalc
-import BaseFDTD as bsfdtd
+#from BaseFDTD import FieldInit, Material, SmoothTurnOn, HyBC, FieldInit, HyBC, HyUpdate, HyTfSfCorr, ExBC, ExUpdate, ExTfSfCorr, UpdateCoef, EmptySpaceCalc, 
+import BaseFDTD 
 from Material_Def import *
 from Validation_Physics import VideoMaker 
 #from moviepy.editor import VideoClip
@@ -28,8 +28,9 @@ from TransformHandler import FourierTrans
 
 
 
+
 class Variables(object):
-    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf):
+    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History,Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf):
         self.UpHyMat = UpHyMat
         self.UpExMat = UpExMat
         self.UpExHcompsCo = UpExHcompsCo
@@ -40,6 +41,8 @@ class Variables(object):
         self.Hy = Hy
         self.Ex_History = Ex_History
         self.Hy_History = Hy_History
+        self.Psi_Ex_History= Psi_Ex_History
+        self.Psi_Hy_History = Psi_Hy_History
         self.Exs = Exs
         self.Hys = Hys
         self.x1ColBe = x1ColBe
@@ -113,17 +116,17 @@ class CPML_Params(object):
 class CPML_Variables(object):
     
     
-    def __init__(self, kappa_Ex, kappa_Hy, psi_Ex, psi_Hy, alpha_Ex, alpha_Hy, sigmaEx, sigmaHy, bev, bmv, ceX, cmY, Ca, Cb, Cc, C1, C2, C3 ):
+    def __init__(self, kappa_Ex, kappa_Hy, psi_Ex, psi_Hy, alpha_Ex, alpha_Hy, sigma_Ex, sigma_Hy, beX, bmV, ceX, cmY, Ca, Cb, Cc, C1, C2, C3, eLoss_CPML, mLoss_CPML ):
         self.kappa_Ex=kappa_Ex
         self.kappa_Hy=kappa_Hy
         self.psi_Ex=psi_Ex
         self.psi_Hy=psi_Hy
         self.alpha_Ex= alpha_Ex
         self.alpha_Hy=alpha_Hy
-        self.sigmaEx=sigmaEx
-        self.sigmaHy=sigmaHy
-        self.bev=bev
-        self.bmv=bmv
+        self.sigma_Ex=sigma_Ex
+        self.sigma_Hy=sigma_Hy
+        self.beX=beX
+        self.bmY=bmY
         self.ceX=ceX
         self.cmY=cmY
         self.Ca=Ca
@@ -132,6 +135,8 @@ class CPML_Variables(object):
         self.C1=C1
         self.C2=C2
         self.C3=C3
+        self.eLoss_CPML=eLoss_CPML
+        self.mLoss_CPML = mLoss_CPML
     def __repr__(self):
         return (f'{self.__class__.__name__}')
     
@@ -144,52 +149,81 @@ class CPML_Variables(object):
 
 #FUNCTION THAT LOADS IN MATERIAL DEF, CAN BE PASSED IN AS A FIRST CLASS FUNCTION, RETURNS ALL
 #PARAMETERS.
-def Controller(P, V, C_P, C_V):  #Needs dot syntax
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History = FieldInit(V,P)
-    V.Exs, V.Hys = SmoothTurnOn(V,P)
+def Controller(V, P, C_V, C_P):  #Needs dot syntax
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History = BaseFDTD.FieldInit(V,P)
+    V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
     
-    V.UpHyMat, V.UpExMat = EmptySpaceCalc(V,P)   #RENAME EMPTY SPACE CALC
-    
+    V.UpHyMat, V.UpExMat = BaseFDTD.EmptySpaceCalc(V,P)   #RENAME EMPTY SPACE CALC
+    C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
     for counts in range(P.timeSteps):   ### for media one transmission
        #V.Hy[P.Nz-1] = HyBC(V,P)
-       V.Hy[0:P.Nz-2] = HyUpdate(V,P)
-       V.Hy[P.nzsrc-1] = HyTfSfCorr(V,P, counts)
-       V.Ex[P.nzsrc] = ExTfSfCorr(V,P, counts)
-       V.Ex[0], V.Ex[P.Nz-1] = ExBC(V,P)
-       V.Ex[1:P.Nz-2]= ExUpdate(V,P) 
+       print(counts ,'counts 1')
+       V.Hy[P.pmlWidth:P.Nz-1-P.pmlWidth] = BaseFDTD.HyUpdate(V,P)
+       V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, counts)
+       V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, counts)
+       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
+       V.Ex[P.pmlWidth: P.Nz-1-P.pmlWidth]  = BaseFDTD.ExUpdate(V,P) 
+       
+       #V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
+       #V.Hy_History[counts] = np.insert(V.Hy_History[counts], 0, Hy)
+       #breakpoint()
+       C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy= BaseFDTD.CPML_ScalingCalc(V, P, C_V, C_P)
+       C_V.beX, C_V.ceX = BaseFDTD.CPML_Ex_RC_Define(V, P, C_V, C_P)
+       C_V.bmY, C_V.cmY = BaseFDTD.CPML_HY_RC_Define(V, P, C_V, C_P)
+       C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD.CPML_Ex_Update_Coef(V,P, C_V, C_P)
+       C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
+       C_V.psi_Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
+       C_V.psi_Hy = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
+       V.Hy[0:P.pmlWidth], V.Hy[P.Nz-1-P.pmlWidth: P.Nz-1] = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
+       V.Ex[1:P.pmlWidth], V.Ex[P.Nz-1-P.pmlWidth: P.Nz-1] = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
+       V.Ex[0], V.Hy[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
        V.Ex_History[counts] = np.insert(V.Ex_History[counts], 0, V.Ex)
-       V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
-    
-    V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf, V.UpHyEcompsCo, V.UpHySelf  = Material(V,P)
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History= FieldInit(V,P)
-    V.Exs, V.Hys = SmoothTurnOn(V,P)
-    V.UpHyMat, V.UpExMat = UpdateCoef(V,P)
-    
+       V.Psi_Ex_History[counts] = np.insert(V.Psi_Ex_History[counts], 0, C_V.psi_Ex)
+       """
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History  = BaseFDTD.Material(V,P)
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History= BaseFDTD.FieldInit(V,P)
+    V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
+    V.UpHyMat, V.UpExMat = BaseFDTD.UpdateCoef(V,P)
+    C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
     for count in range(P.timeSteps):   ### for media one transmission
        #V.Hy[P.Nz-1] = HyBC(V,P)
-       V.Hy[0:P.Nz-2] = HyUpdate(V,P)
-       V.Hy[P.nzsrc-1] = HyTfSfCorr(V,P, count)
-       V.Ex[P.nzsrc] = ExTfSfCorr(V,P, count)
-       V.Ex[0], V.Ex[P.Nz-1] = ExBC(V,P)
-       V.Ex[1:P.Nz-2]= ExUpdate(V,P)
-       V.Ex_History[count] = np.insert(V.Ex_History[counts], 0, V.Ex)
-       V.x1ColAf[count]= V.Ex_History[count][P.x1Loc]
-       #Hy_History[count] = np.insert(Hy_History[count], 0, Hy)
+       print(count ,'count 2')
+       V.Hy[P.pmlWidth:P.Nz-1-P.pmlWidth] = BaseFDTD.HyUpdate(V,P)
+       V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, count)
+       V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, count)
+       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
+       V.Ex[P.pmlWidth: P.Nz-1-P.pmlWidth]= BaseFDTD.ExUpdate(V,P)
        
+       
+       
+       C_V.sigma_Ex , C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy= BaseFDTD.CPML_ScalingCalc(V, P, C_V, C_P)
+       C_V.beX, C_V.ceX = BaseFDTD.CPML_Ex_RC_Define(V, P, C_V, C_P)
+       C_V.bmY, C_V.cmY = BaseFDTD.CPML_HY_RC_Define(V, P, C_V, C_P)
+       C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD.CPML_Ex_Update_Coef(V,P, C_V, C_P)
+       C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
+       C_V.psi_Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
+       C_V.psi_Hy = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
+       V.Hy[0:P.pmlWidth], V.Hy[P.Nz-1-P.pmlWidth: P.Nz-1] = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
+       V.Ex[1:P.pmlWidth], V.Ex[P.Nz-1-P.pmlWidth: P.Nz-1]= BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
+       V.Ex[0], V.Hy[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
+       V.Hy_History[count] = np.insert(V.Hy_History[count], 0, V.Hy)
+       V.Ex_History[count] = np.insert(V.Ex_History[count], 0, V.Ex)
+       V.x1ColAf[count]= V.Ex_History[count][P.x1Loc]
+       """
        
     #FFT x1ColBe and x1ColAf? 
     
    # transWithExp, sig1Freq, sig2Freq, sample_freq = FourierTrans(x1ColBe, x1ColAf, x1Loc, t, delT)
 # should have constant val of transmission over all freq range of source, will need harmonic source?   
 
-    return P, V
+    return V, P, C_V, C_P
 
 P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth )    
-V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf)
-C_P =  CPML_Params(kappaMax, sigmaEMax, sigmaHMax, sigmaOpt, bev, bmv, ceX, cmY, alphaMax, r_scale, r_a_scale)
-C_V = CPML_Variables(kappa_Ex, kappa_Hy, psi_Ex, psi_Hy, alpha_Ex, alpha_Hy, sigmaEx, sigmaHy,bev, bmv, ceX, cmY, Ca, Cb, Cc, C1, C2, C3 )
+V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf)
+C_P =  CPML_Params(kappaMax, sigmaEMax, sigmaHMax, sigmaOpt, alphaMax, r_scale, r_a_scale)
+C_V = CPML_Variables(kappa_Ex, kappa_Hy, psi_Ex, psi_Hy, alpha_Ex, alpha_Hy, sigma_Ex, sigma_Hy,beX, bmY, ceX, cmY, Ca, Cb, Cc, C1, C2, C3, eLoss_CPML, mLoss_CPML )
 
-P, V = Controller(P, V, C_V, C_P)
+V, P, C_V, C_P= Controller(V, P, C_V, C_P)
 
 #Now we prepare to make the video including I/O stuff like setting up a new directory in the current working directory and 
 
@@ -206,6 +240,8 @@ Ex = V.Ex
 Hy = V.Hy
 Ex_History = V.Ex_History
 Hy_History = V.Hy_History
+Psi_Ex_History=V.Psi_Ex_History
+Psi_Hy_History=V.Psi_Hy_History
 Exs = V.Exs
 Hys = V.Hys
 x1ColBe = V.x1ColBe
@@ -251,10 +287,6 @@ kappaMax = C_P.kappaMax
 sigmaEMax= C_P.sigmaEMax
 sigmaHMax= C_P.sigmaHMax
 sigmaOpt= C_P.sigmaOpt
-beX = C_P.beX
-bmY = C_P.bmY
-ceX= C_P.ceX
-cmY = C_P.cmY
 alphaMax = C_P.alphaMax
 r_scale = C_P.r_scale
 r_a_scale = C_P.r_a_scale
@@ -267,8 +299,8 @@ psi_Ex = C_V.psi_Ex
 psi_Hy=  C_V.psi_Hy
 alpha_Ex =  C_V.alpha_Ex#
 alpha_Hy = C_V.alpha_Hy
-sigmaEx =  C_V.sigmaEx
-sigmaHy = C_V.sigmaHy
+sigma_Ex =  C_V.sigma_Ex
+sigma_Hy = C_V.sigma_Hy
 beX = C_V.beX
 bmY = C_V.bmY
 ceX = C_V.ceX
@@ -280,6 +312,7 @@ C1= C_V.C1
 C2= C_V.C2
 C3= C_V.C3 
 
-
+eLoss_CPML = C_V.eLoss_CPML
+mLoss_CPML = C_V.mLoss_CPML
 
 
