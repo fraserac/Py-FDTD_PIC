@@ -199,7 +199,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        V.Hy_History[counts] = np.insert(V.Hy_History[counts], 0, V.Hy)
        #breakpoint()
        
-    """  
+     
     V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History  = BaseFDTD.Material(V,P)
     V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History= BaseFDTD.FieldInit(V,P)
     V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
@@ -213,18 +213,21 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        C_V.bmY, C_V.cmY = BaseFDTD.CPML_HY_RC_Define(V, P, C_V, C_P)
        C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD.CPML_Ex_Update_Coef(V,P, C_V, C_P)
        C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
-       
-       C_V.psi_Hy = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
-       V.Hy[0:P.pmlWidth], V.Hy[P.Nz-1-P.pmlWidth: P.Nz-1] = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
-       V.Hy[P.pmlWidth:P.Nz-1-P.pmlWidth] = BaseFDTD.HyUpdate(V,P)
+       C_V.den_Exdz, C_V.den_Hydz = BaseFDTD.denominators(V, P, C_V, C_P)
        
        
+       V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
+       C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
        
+       #V.Hy = BaseFDTD.HyUpdate(V,P, C_V)
        V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, count)
        V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, count)
-       C_V.psi_Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
-       V.Ex[1:P.pmlWidth], V.Ex[P.Nz-1-P.pmlWidth: P.Nz-1] = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
-       V.Ex[P.pmlWidth: P.Nz-1-P.pmlWidth]  = BaseFDTD.ExUpdate(V,P) 
+      
+       V.Ex = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
+       C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
+       
+       
+       #V.Ex  = BaseFDTD.ExUpdate(V,P, C_V) 
       
       
        
@@ -235,8 +238,12 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        
        #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
        
-       V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
-     """ 
+       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
+      
+       
+       #V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
+       V.Hy_History[count] = np.insert(V.Hy_History[count], 0, V.Hy)
+     
     #FFT x1ColBe and x1ColAf? 
     
    # transWithExp, sig1Freq, sig2Freq, sample_freq = FourierTrans(x1ColBe, x1ColAf, x1Loc, t, delT)

@@ -187,8 +187,8 @@ def Material(V,P):
             if(kj >= P.materialFrontEdge and kj < P.materialRearEdge):
                 V.epsilon[kj] = P.epsRe
                 V.mu[kj] = P.muRe
-                V.UpExHcompsCo[kj] = 1
-                V.UpExSelf[kj] = 1
+                V.UpExHcompsCo[kj] = P.eHcompsCo
+                V.UpExSelf[kj] = P.eSelfCo
                 V.UpHyEcompsCo[kj] =P.hEcompsCo
                 V.UpHySelf[kj] = P.hSelfCo
             if(kj>= P.materialRearEdge):
@@ -229,7 +229,7 @@ def HyBC(V,P):
 # FOR HY AND EX update/EZ? feed in eSelfCo and hSelfCo
 def HyUpdate(V,P,C_V):
     for nz in range(0, P.Nz-1):   
-        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]*C_V.den_Hydz[nz]
     return V.Hy
 
 def HyTfSfCorr(V, P, counts):
@@ -251,7 +251,7 @@ def ExUpdate(V, P):
 """
 def ExUpdate(V, P, C_V):
     for nz in range(0, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]
+        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]*C_V.den_Exdz[nz]
     return V.Ex   
 
 def ExTfSfCorr(V,P, counts):
@@ -288,7 +288,7 @@ def CPML_FieldInit(V,P, C_V, C_P):#INITIALISE FIELD PARAMS
     return C_V
     
 def CPML_ScalingCalc(V, P, C_V, C_P):
-    counter =1
+    
     for nz in range(P.pmlWidth):   #SCALES VARS AWAY FROM SIM DOMAIN, REVERSE FOR LOOP
         C_V.kappa_Ex[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz)/(P.pmlWidth))**C_P.r_scale
         
@@ -326,7 +326,7 @@ def CPML_Ex_Update_Coef(V,P, C_V, C_P):
         C_V.eLoss_CPML[nz] = (C_V.sigma_Ex[nz]*P.delT)/(2*P.permit_0)
         
         C_V.Ca[nz] = V.UpExSelf[nz]#(1-C_V.eLoss_CPML[nz])/(1+C_V.eLoss_CPML[nz])
-        C_V.Cb[nz] =V.UpExHcompsCo[nz]#P.delT/P.permit_0/(1+C_V.eLoss_CPML[nz])
+        C_V.Cb[nz] =V.UpExHcompsCo[nz]*V.UpExMat[nz]#P.delT/P.permit_0/(1+C_V.eLoss_CPML[nz])
         C_V.Cc[nz] = P.delT/((1+C_V.eLoss_CPML[nz])*P.permit_0)
         
     #for nz in range(P.pmlWidth, P.Nz-P.pmlWidth-1 ):
@@ -341,7 +341,7 @@ def CPML_Hy_Update_Coef(V,P, C_V, C_P):
         #C_V.mLoss_CPML[nz] = (C_V.sigma_Hy[nz]*P.delT)/(2*P.permea_0)
         
         C_V.C1[nz] =1#V.UpHySelf[nz] #(1-C_V.mLoss_CPML[nz])/(1+C_V.mLoss_CPML[nz])
-        C_V.C2[nz] =P.delT/P.permea_0# V.UpHyEcompsCo[nz]#P.delT/((1+C_V.mLoss_CPML[nz])*P.permea_0*C_V.kappa_Hy[nz]*P.dz)
+        C_V.C2[nz] = P.delT/P.permea_0# V.UpHyEcompsCo[nz]#P.delT/((1+C_V.mLoss_CPML[nz])*P.permea_0*C_V.kappa_Hy[nz]*P.dz)
         C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)#NOT CURRENTLY USED
     #for nz in range(P.pmlWidth ,P.Nz-P.pmlWidth-1): 
        # C_V.C1[nz] = V.UpHySelf[nz]
@@ -351,64 +351,66 @@ def CPML_Hy_Update_Coef(V,P, C_V, C_P):
     
 def denominators(V, P, C_V, C_P):
     jj = P.pmlWidth-2
-    for j in range(0,P.Nz-2): 
+    for j in range(0,P.Nz): 
         if j <= P.pmlWidth -2:
-            C_V.den_Hydz[j]= 1/(C_V.kappa_Hy[j]*P.dz)
+            C_V.den_Hydz[j]= 1/(C_V.kappa_Hy[j])
         elif j>= P.Nz+1-P.pmlWidth:
-            C_V.den_Hydz[j] = 1/(C_V.kappa_Hy[jj]*P.dz)
+            C_V.den_Hydz[j] = 1/(C_V.kappa_Hy[jj])
             
             jj-=1
         else:
-            C_V.den_Hydz[j] = 1/(P.dz)
+            C_V.den_Hydz[j] = 1/(1)
     jj = P.pmlWidth-1
     for j in range(0,P.Nz): 
         if j <= P.pmlWidth-1:
-            C_V.den_Exdz[j]= 1/(C_V.kappa_Ex[j]*P.dz)
+            C_V.den_Exdz[j]= 1/(C_V.kappa_Ex[j])
         elif j>= P.Nz+1-P.pmlWidth:
-            C_V.den_Exdz[j] = 1/(C_V.kappa_Ex[jj]*P.dz)
+            C_V.den_Exdz[j] = 1/(C_V.kappa_Ex[jj])
             jj-=1
         else:
-            C_V.den_Exdz[j] = 1/(P.dz)        
+            C_V.den_Exdz[j] = 1/(1)        
     return C_V.den_Exdz, C_V.den_Hydz
     
     
     
 def CPML_Psi_e_Update(V,P, C_V, C_P):   # recursive convolution for E field REF
-    jj = P.pmlWidth
-    for nz in range(1, P.pmlWidth): 
-        C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])/P.dz
-        V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz]
+    jj = P.pmlWidth-1
+    for nz in range(0, P.pmlWidth): 
+        C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
+        V.Ex[nz] = V.Ex[nz] + C_V.Cb[nz]*C_V.psi_Ex[nz]
     for nz in range(P.Nz-1-P.pmlWidth, P.Nz):
-        C_V.psi_Ex[nz] = C_V.beX[jj]*C_V.psi_Ex[jj] + C_V.ceX[jj]*(V.Hy[nz]-V.Hy[nz-1])/P.dz#
-        V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[jj]
+        C_V.psi_Ex[nz] = C_V.beX[jj]*C_V.psi_Ex[jj] + C_V.ceX[jj]*(V.Hy[nz]-V.Hy[nz-1])#
+        V.Ex[nz] = V.Ex[nz] + C_V.Cb[nz]*C_V.psi_Ex[jj]
         jj-=1
     
     return C_V.psi_Ex, V.Ex   
 
 def CPML_Psi_m_Update(V,P, C_V, C_P):   # recursive convolution for H field REF
     jj = P.pmlWidth-1
-    for nz in range(0, P.pmlWidth-1): 
-        C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz]-V.Ex[nz+1])/P.dz
+    for nz in range(0, P.pmlWidth): 
+        C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz]-V.Ex[nz+1])
         V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[nz]
     for nz in range(P.Nz-1-P.pmlWidth, P.Nz-1):
-         C_V.psi_Hy[nz] = C_V.bmY[jj]*C_V.psi_Hy[jj] + C_V.cmY[jj]*(V.Ex[nz]-V.Ex[nz+1])/P.dz
+         C_V.psi_Hy[nz] = C_V.bmY[jj]*C_V.psi_Hy[jj] + C_V.cmY[jj]*(V.Ex[nz]-V.Ex[nz+1])
          V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[jj]
          jj-=1
     return C_V.psi_Hy, V.Hy 
 
 
 def CPML_HyUpdate(V,P, C_V, C_P):
-    for nz in range( 1, P.Nz-1):
-        V.Hy[nz]= C_V.C1[nz]*V.Hy[nz]+C_V.C2[nz]*(V.Ex[nz]-V.Ex[nz+1])*C_V.den_Hydz[nz]
+    for nz in range( 0, P.Nz-1):
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]*C_V.den_Hydz[nz]
+        #V.Hy[nz]= C_V.C1[nz]*V.Hy[nz]+C_V.C2[nz]*(V.Ex[nz]-V.Ex[nz+1])*C_V.den_Hydz[nz]
     return V.Hy
 
 
 def CPML_ExUpdate(V,P, C_V, C_P):
-    for nz in range( 1, P.Nz):
+    for nz in range(0, P.Nz-1):
         #print(nz)
         #print("************************** ")
         #breakpoint()
-        V.Ex[nz]= C_V.Ca[nz]*V.Ex[nz]+C_V.Cb[nz]*(V.Hy[nz-1]-V.Hy[nz])*C_V.den_Exdz[nz]
+        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]*C_V.den_Exdz[nz]
+        #V.Ex[nz]= C_V.Ca[nz]*V.Ex[nz]+C_V.Cb[nz]*(V.Hy[nz-1]-V.Hy[nz])*C_V.den_Exdz[nz]
     return V.Ex
 
 
