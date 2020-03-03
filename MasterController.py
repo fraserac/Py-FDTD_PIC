@@ -152,7 +152,7 @@ class CPML_Variables(object):
 #FUNCTION THAT LOADS IN MATERIAL DEF, CAN BE PASSED IN AS A FIRST CLASS FUNCTION, RETURNS ALL
 #PARAMETERS.
 def Controller(V, P, C_V, C_P):  #Needs dot syntax
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History = BaseFDTD.FieldInit(V,P)
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History,V.Exs, V.Hys = BaseFDTD.FieldInit(V,P)
     V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
     
     V.UpHyMat, V.UpExMat = BaseFDTD.EmptySpaceCalc(V,P)   #RENAME EMPTY SPACE CALC
@@ -192,16 +192,16 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        
        #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
        
-       V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
+       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
       
        
        #V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
        V.Hy_History[counts] = np.insert(V.Hy_History[counts], 0, V.Hy)
        #breakpoint()
-       
+    
      
     V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History  = BaseFDTD.Material(V,P)
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History= BaseFDTD.FieldInit(V,P)
+    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys= BaseFDTD.FieldInit(V,P)
     V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
     V.UpHyMat, V.UpExMat = BaseFDTD.UpdateCoef(V,P)
     C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
@@ -229,14 +229,14 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        
        #V.Ex  = BaseFDTD.ExUpdate(V,P, C_V) 
       
-      
+       V.Hy[P.Nz-1]= BaseFDTD.CPML_PMC(V,P,C_V, C_P)
        
        V.Ex_History[count] = np.insert(V.Ex_History[count], 0, V.Ex)
        V.Psi_Ex_History[count] = np.insert(V.Psi_Ex_History[count], 0, C_V.psi_Ex)
        V.Psi_Hy_History[count] = np.insert(V.Psi_Hy_History[count], 0, C_V.psi_Hy)
        
        
-       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
+       V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
        
        #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
       

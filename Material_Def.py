@@ -9,9 +9,9 @@ import scipy.constants as sci
 
 permit_0 = sci.epsilon_0
 permea_0 = sci.mu_0
-epsRe =9
+epsRe =1
 epsIm = 0
-muRe = 3
+muRe = 1
 muIm = 0
 
 c0 = sci.speed_of_light
@@ -28,18 +28,20 @@ CharImp =np.sqrt(permea_0)/np.sqrt(permit_0)
 
 period = 1/freq_in
 
-pmlWidth =120
+pmlWidth =50
 domainSize = 100
 dimen =1
+
+
 Nz = domainSize +2*dimen*pmlWidth   #Grid size
 
-timeSteps =1000
+timeSteps =500
 t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
 
 nzsrcFromPml = 20
 nzsrc = nzsrcFromPml + pmlWidth # Position of source 
 x1Loc = 80
-MaterialDistFromPml = 50
+MaterialDistFromPml = 70
 MaterialFrontEdge = MaterialDistFromPml + pmlWidth  # Discrete tile where material begins (array index)
 MaterialWidth = 20
 MaterialRearEdge = MaterialFrontEdge + MaterialWidth
@@ -76,16 +78,16 @@ mu = np.ones(Nz)
 
 ###PML STUFF PARAMS
 
-kappaMax =15 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+kappaMax =10 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
 r_scale = 3# Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
 r_a_scale=1
-sigmaEMax = 0.75*(0.8*(r_scale+1)/(dz*(permea_0/permit_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+sigmaEMax =(0.8*(r_scale+1)/(dz*(permea_0/permit_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
 sigmaHMax = sigmaEMax#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
 sigmaOpt  =sigmaEMax
 #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
 
 
-alphaMax= 0.24 # with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+alphaMax= 0.05 # with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
 
 
 # VARIABLES
@@ -115,6 +117,11 @@ den_Hydz = np.zeros(Nz)
 den_Exdz = np.zeros(Nz)    
     #set up class for FDTD parameters, so mastercontroller is unit testable
     
-    
+"""    
+m = 3; ma = 1 ; 
+sigZmax =  (0.8*(m+1)/(dxyz*(mu0/eps0*epsR)^0.5)); 
+aZmax = 0.05; 
+kZmax = 1.0; 
+"""
     
     
