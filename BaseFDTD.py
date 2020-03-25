@@ -14,7 +14,6 @@ from Material_Def import *
 """
 
 import numpy as np
-import scipy as sci
 import math
 import matplotlib.pylab as plt
 import matplotlib.animation as animation
@@ -23,6 +22,7 @@ from scipy import signal as sign
 import sys 
 from decimal import *
 import itertools as it
+from scipy import signal as sign
 
   ##M MAKE THIS MORE ACCURATE LATER
 
@@ -85,14 +85,14 @@ for count in range(timeSteps):
 #EXPAND TO 2D after considering memory optimisation, then include particle sutff. 
 def sourceGen(T):
     #print(T)
-    pulse = np.sin(2*np.pi*freq_in*delT*T)#np.exp(-(T - 30)*(T-30)/100)# - (50))*(1/CharImp)
+    pulse = np.exp(-(T - 30)*(T-30)/100)# - (50))*(1/CharImp)
     #print(pulse)
     #pulse = np.exp(-((t-t0)/tau)**2)
     return pulse
 
-def sourceGen2(T):
+def sourceGen2(P, T):
     #deltaT =( 50*0.00033273660620797844)/(2*299462945.5871806) - 1.111111111111111e-12/2
-    pulse = np.sin(2*np.pi*freq_in*delT*T - (50+1))
+    pulse = np.sin(2*np.pi*P.freq_in*P.delT*T)
     #print(pulse)
     #pulse = np.exp(-((t-t0)/tau)**2)
     return pulse
@@ -111,7 +111,7 @@ def FieldInit(V,P):
             if P.timeSteps > 2**14:
                 raise ValueError('timeSteps max too large')
                 break
-            if P.Nz > 1000:
+            if P.Nz > 3000:
                 raise ValueError('Grid size too big')
                 break
             if P.Nz ==0:
@@ -224,40 +224,22 @@ def UpdateCoef(V,P):# POTENTIAL ISSUE, COURANT NO AND DOUBLE DEFINITION OF MU EP
 
 
 
-def HyBC(V,P):
-    V.Hy[P.Nz-1] = V.Hy[P.Nz-2]
-    return V.Hy[P.Nz-1]
-   
+
 # FOR HY AND EX update/EZ? feed in eSelfCo and hSelfCo
-def HyUpdate(V,P,C_V):
-    for nz in range(0, P.Nz-1):   
-        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]#*C_V.den_Hydz[nz]
-    return V.Hy
+
 
 def HyTfSfCorr(V, P, counts):
+     #V.Hy[P.nzsrc-1] -= sourceGen(counts)
      V.Hy[P.nzsrc-1] -= V.Exs[counts]/P.CharImp#*np.exp(-(counter - 30)*(counter-30)/100)
      #link to sourceGen for harmonic or ricker or gaussian etc 
      #np.sin((2*np.pi)/Nlam*(courantNo))
      return V.Hy[P.nzsrc-1]
    
-def ExBC(V, P):
-    V.Ex[0] = V.Ex[1]
-    V.Ex[P.Nz-1]=  V.Ex[P.Nz-2]
-    return V.Ex[0], V.Ex[P.Nz-1]
+
    
-"""
-def ExUpdate(V, P):
-    for nz in range(0, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*V.UpExHcompsCo[nz]#*UpExMat[nz]
-    return V.Ex   
-"""
-def ExUpdate(V, P, C_V):
-    for nz in range(0, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#*C_V.den_Exdz[nz]
-    return V.Ex   
 
 def ExTfSfCorr(V,P, counts):
-   # ExTfsf= ExTfsf + np.exp(-(counter +0.5 -(-0.5)-30)*(counter +0.5 -(-0.5)-30)/100)
+    #V.Ex[P.nzsrc] += sourceGen2(P, counts)
     V.Ex[P.nzsrc] += V.Hys[counts]# *np.exp(-(counter +0.5 -(-0.5)-30)*(counter +0.5 -(-0.5)-30)/100)
     return V.Ex[P.nzsrc]
 
@@ -340,22 +322,7 @@ def CPML_ScalingCalc(V, P, C_V, C_P):
             C_V.alpha_Hy[nz] = 0 
         
     return C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy
-    
-    """
-def CPML_Ex_RC_Define(V, P, C_V, C_P):
-    for nz in range(0, P.pmlWidth):
-        C_V.beX[nz] = np.exp(-(C_V.sigma_Ex[nz]/C_V.kappa_Ex[nz]+C_V.alpha_Ex[nz])*P.delT/P.permit_0)
-        if C_V.sigma_Ex[nz] ==0 and nz==P.pmlWidth-1 and C_V.alpha_Ex[nz]==0:
-           C_V.ceX[nz]=0
-        else:
-            C_V.ceX[nz] = (C_V.beX[nz]-1)*C_V.sigma_Ex[nz]/(C_V.sigma_Ex[nz]+C_V.alpha_Ex[nz]*C_V.kappa_Ex[nz])/C_V.kappa_Ex[nz]
-    return C_V.beX, C_V.ceX
-    """
-    
-    """
-    np.exp(-((C_V.sigma_Ex[nz]*P.delT/C_V.kappa_Ex[nz])+((C_V.alpha_Ex[nz]*P.delT)/P.permit_0)))
-    
-    """
+
     
 def CPML_Ex_RC_Define(V, P, C_V, C_P):
     
@@ -385,14 +352,8 @@ def CPML_Ex_RC_Define(V, P, C_V, C_P):
              C_V.ceX[nz] =0
             
     return C_V.beX, C_V.ceX
-"""
-def CPML_HY_RC_Define(V, P, C_V, C_P):
-    for nz in range(0, P.pmlWidth-1):
-        C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[nz]/C_V.kappa_Hy[nz]+C_V.alpha_Hy[nz])*P.delT/P.permit_0)
-        
-        C_V.cmY[nz] = (C_V.bmY[nz]-1)*C_V.sigma_Hy[nz]/(C_V.sigma_Hy[nz]+C_V.alpha_Hy[nz]*C_V.kappa_Hy[nz])/C_V.kappa_Hy[nz]
-    return C_V.bmY, C_V.cmY
-"""
+
+
 def CPML_HY_RC_Define(V, P, C_V, C_P):
     jj = P.pmlWidth-2
     jjj =P.pmlWidth-2
@@ -400,14 +361,12 @@ def CPML_HY_RC_Define(V, P, C_V, C_P):
     for nz in range(0, P.Nz):
         
         if(nz <=P.pmlWidth-2):
-            C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[nz]/(C_V.kappa_Hy[nz]+C_V.alpha_Hy[nz]))*P.delT/P.permit_0)
+            C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[nz]/(C_V.kappa_Hy[nz]+C_V.alpha_Hy[nz]))*P.delT/P.permea_0)
         elif nz >= P.Nz+2 -P.pmlWidth:
-            C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[jj]/(C_V.kappa_Hy[jj]+C_V.alpha_Hy[jj]))*P.delT/P.permit_0)
+            C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[jj]/(C_V.kappa_Hy[jj]+C_V.alpha_Hy[jj]))*P.delT/P.permea_0)
             jj-=1
         else:
             C_V.bmY[nz] =0 
-            
-            
             
              
         if C_V.sigma_Hy[nz] ==0 and nz==P.pmlWidth-1 and C_V.alpha_Hy[nz]==0:
@@ -474,19 +433,7 @@ def denominators(V, P, C_V, C_P):
     return C_V.den_Exdz, C_V.den_Hydz
     
     
-"""
-def CPML_Psi_e_Update(V,P, C_V, C_P):   # recursive convolution for E field REF
-    jj = P.pmlWidth-1
-    for nz in range(1, P.pmlWidth): 
-        C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
-        V.Ex[nz] = V.Ex[nz] + C_V.Cb[nz]*C_V.psi_Ex[nz]
-    for nz in range(P.Nz-1-P.pmlWidth, P.Nz):
-        C_V.psi_Ex[nz] = C_V.beX[jj]*C_V.psi_Ex[jj] + C_V.ceX[jj]*(V.Hy[nz]-V.Hy[nz-1])#
-        V.Ex[nz] = V.Ex[nz] + C_V.Cb[nz]*C_V.psi_Ex[jj]
-        jj-=1
-    
-    return C_V.psi_Ex, V.Ex   
-"""
+
 
 def CPML_Psi_e_Update(V,P, C_V, C_P):   # recursive convolution for E field REF
     for nz in range(1, P.Nz-1): 
@@ -494,20 +441,7 @@ def CPML_Psi_e_Update(V,P, C_V, C_P):   # recursive convolution for E field REF
         V.Ex[nz] = V.Ex[nz] + C_V.Cb[nz]*C_V.psi_Ex[nz]
     
     return C_V.psi_Ex, V.Ex 
-"""
 
-def CPML_Psi_m_Update(V,P, C_V, C_P):   # recursive convolution for H field REF
-    jj = P.pmlWidth-1
-    for nz in range(0, P.pmlWidth-1): 
-        C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz]-V.Ex[nz+1])
-        V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[nz]
-    for nz in range(P.Nz-2-P.pmlWidth, P.Nz-1):
-         C_V.psi_Hy[nz] = C_V.bmY[jj]*C_V.psi_Hy[jj] + C_V.cmY[jj]*(V.Ex[nz]-V.Ex[nz+1])
-         V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[jj]
-         jj-=1
-    return C_V.psi_Hy, V.Hy 
-
-"""
 
 def CPML_Psi_m_Update(V,P, C_V, C_P):   # recursive convolution for H field REF
     for nz in range(0, P.Nz-2): 

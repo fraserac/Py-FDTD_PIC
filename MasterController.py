@@ -19,7 +19,7 @@ from Validation_Physics import VideoMaker
 #from moviepy.editor import VideoClip
 #from moviepy.video.io.bindings import mplfig_to_npimage
 #import moviepy.editor as mv
-import os
+import os 
 import sys
 import shutil
 import cv2
@@ -65,10 +65,10 @@ class Params(object):
     CharImp =np.sqrt(permea_0/permit_0)
     c0 = 299792458.0
     
-    def __init__(self, epsRe, muRe, f_in, lMin, nlm, dz, delT, courantNo, matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth ):
+    def __init__(self, epsRe, muRe, freq_in, lMin, nlm, dz, delT, courantNo, matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth, x2Loc ):
         self.epsRe = epsRe
         self.muRe = muRe
-        self.freq_in = f_in
+        self.freq_in = freq_in
         self.lamMin = lMin
         self.Nlam = nlm
         self.dz = dz
@@ -79,6 +79,7 @@ class Params(object):
         self.Nz = gridNo
         self.timeSteps = timeSteps
         self.x1Loc = x1Loc
+        self.x2Loc = x2Loc
         self.nzsrc = nzsrc
         self.period = period
         self.eLoss = eLoss
@@ -173,7 +174,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
        C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
        
-       #V.Hy = BaseFDTD.HyUpdate(V,P, C_V)
+       
        V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, counts)
        V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, counts)
       
@@ -181,7 +182,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
        
        
-       #V.Ex  = BaseFDTD.ExUpdate(V,P, C_V) 
+     
       
       
        
@@ -190,12 +191,12 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        V.Psi_Hy_History[counts] = np.insert(V.Psi_Hy_History[counts], 0, C_V.psi_Hy)
        
        
-       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
+     
        
-       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
+      
       
        
-       #V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
+       V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
        V.Hy_History[counts] = np.insert(V.Hy_History[counts], 0, V.Hy)
        #breakpoint()
     
@@ -206,7 +207,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
     V.UpHyMat, V.UpExMat = BaseFDTD.UpdateCoef(V,P)
     C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
     for count in range(P.timeSteps):   ### for media one transmission
-       #V.Hy[P.Nz-1] = HyBC(V,P)
+    
        #print(count ,'count 2')
        C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy= BaseFDTD.CPML_ScalingCalc(V, P, C_V, C_P)
        C_V.beX, C_V.ceX = BaseFDTD.CPML_Ex_RC_Define(V, P, C_V, C_P)
@@ -218,8 +219,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        
        V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
        C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
-       
-       #V.Hy = BaseFDTD.HyUpdate(V,P, C_V)
+      
        V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, count)
        V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, count)
       
@@ -227,7 +227,6 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
        
        
-       #V.Ex  = BaseFDTD.ExUpdate(V,P, C_V) 
       
        V.Hy[P.Nz-1]= BaseFDTD.CPML_PMC(V,P,C_V, C_P)
        
@@ -236,22 +235,22 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        V.Psi_Hy_History[count] = np.insert(V.Psi_Hy_History[count], 0, C_V.psi_Hy)
        
        
-       V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.ExBC(V,P)
        
-       #V.Ex[0], V.Ex[P.Nz-1] = BaseFDTD.CPML_PEC(V, P, C_V, C_P)
+       
+      
       
        
-       #V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
+       V.x1ColAf[count] = V.Ex_History[count][P.x2Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
        V.Hy_History[count] = np.insert(V.Hy_History[count], 0, V.Hy)
      
     #FFT x1ColBe and x1ColAf? 
+   
     
-   # transWithExp, sig1Freq, sig2Freq, sample_freq = FourierTrans(x1ColBe, x1ColAf, x1Loc, t, delT)
 # should have constant val of transmission over all freq range of source, will need harmonic source?   
 
     return V, P, C_V, C_P
 
-P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth )    
+P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth, x2Loc )    
 V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf)
 C_P =  CPML_Params(kappaMax, sigmaEMax, sigmaHMax, sigmaOpt, alphaMax, r_scale, r_a_scale)
 C_V = CPML_Variables(kappa_Ex, kappa_Hy, psi_Ex, psi_Hy, alpha_Ex, alpha_Hy, sigma_Ex, sigma_Hy,beX, bmY, ceX, cmY, Ca, Cb, Cc, C1, C2, C3, eLoss_CPML, mLoss_CPML, den_Hydz, den_Exdz )
@@ -263,8 +262,10 @@ V, P, C_V, C_P= Controller(V, P, C_V, C_P)
 #deleting the old directory from previous run and overwriting.
 
 VideoMaker(P, V)
+#reflectionCalc(P,V)
 
-
+t =np.arange(0,len(x1ColBe))
+transWithExp, sig1Freq, sig2Freq, sample_freq = FourierTrans(P, V, x1ColBe, x1ColAf, x1Loc,  t, P.delT)
 ####variable exposes
 
 UpHyMat = V.UpHyMat

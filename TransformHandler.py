@@ -28,27 +28,45 @@ import numpy as np
 from scipy import fftpack
 from matplotlib import pyplot as plt
 from decimal import *
+import sys
 
-def FourierTrans(itemForTransf1, itemForTransf2, x1Loc, time_vec, delT):
-    sig_fft1 = 2*fftpack.fft(itemForTransf1)/len(itemForTransf1)
-    sig_fft2 = 2*fftpack.fft(itemForTransf2)/len(itemForTransf2)
-   # sig_fft2 = fftpack.fftshift(sig_fft2)
+def FourierTrans(P, V, itemForTransf1, itemForTransf2, x1Loc, time_vec, delT):
+    sig_fft1 = 2*abs(fftpack.fft(itemForTransf1))  # 2 FACTOR COMES FROM SPLITTING ENERGY OVER POS AND NEG
+    sig_fft2 = 2*abs(fftpack.fft(itemForTransf2))
+   # 1/delT = fs
+    
+    
+    
+    # sig_fft2 = fftpack.fftshift(sig_fft2)
    # sig_fft2 = fftpack.ifft(sig_fft2)
     transm = sig_fft2/sig_fft1
-   # transm = fftpack.fftshift(transm)
+    #transm = fftpack.fftshift(transm)
     #plt.plot(time_vec, transm, label='Original signal ')  # make this work by feeding in stuff
     sample_freq = fftpack.fftfreq(len(itemForTransf1), d= delT)
+    
    # sample_freq = fftpack.fftshift(sample_freq)
     #transmPow = np.abs(transm)
    # plt.plot(sample_freq, transmPow, label='Power spectrum freq. ')
+    reflectionCo = ReflectionCalc(P,V,  sample_freq, sig_fft1, sig_fft2)
+    print(reflectionCo)
     return transm, sig_fft1, sig_fft2, sample_freq
     
     # feed in x1ColBe and x1ColAf separately. 
     
 
 
-def ReflectionCalc():
-    pass
+def ReflectionCalc(P, V, sample_freq, sig_fft1, sig_fft2):
+    
+    freqIndex = (P.freq_in*P.timeSteps)/(1/P.delT)#
+    
+    if freqIndex/int(freqIndex) !=1:
+        freqIndex = int(freqIndex)
+    reflectionCo = sig_fft2[int(freqIndex)]/sig_fft1[int(freqIndex)]
+    return reflectionCo
+    # Once freq index has been found use this to calc reflection
+    
+    
+    
 
 def TransmissionCalc():
     pass

@@ -50,6 +50,8 @@ def VideoMaker(P,V):
         ax.set_ylim(-2, 2)
         ax.set_xlim(0, P.Nz)
         ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
+        ax.axvspan(P.x1Loc, P.x1Loc+2 , alpha=0.5, color='red')
+        ax.axvspan(P.x2Loc, P.x2Loc+2 , alpha=0.5, color='black')
         ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
         ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
         
