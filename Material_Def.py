@@ -16,7 +16,7 @@ muRe = 1
 muIm = 0
 
 c0 = sci.speed_of_light
-freq_in = 1e11
+freq_in = 1e10
 
 ### WILL NEED MAX FREQ WHEN HIGHER HARMONICS ARE PRESENT
 lamMin = c0/freq_in
@@ -30,7 +30,7 @@ CharImp =np.sqrt(permea_0)/np.sqrt(permit_0)
 
 period = 1/freq_in
 
-pmlWidth =50 +int(30*freq_in/(1e10))
+pmlWidth =150 +int(30*freq_in/(1e10))
 print('pmlWidth = ' , pmlWidth)
 if (pmlWidth >= 500):
     print('pmlWidth too big', pmlWidth)
@@ -41,8 +41,8 @@ dimen =1
 nonInt =  False
 
 Nz = domainSize +2*dimen*pmlWidth   #Grid size
-minRange = 500
-maxRange = 1000
+minRange = 2000
+maxRange = 5000
 for N in range(minRange,maxRange):
     check = (freq_in*N)/(1/delT)
     #print(check)
@@ -58,7 +58,7 @@ if(nonInt == True):
     checkNear = (freq_in*minRange)/(1/delT)
     for N in range(minRange, maxRange):
         dummyCheck = (freq_in*N)/(1/delT)
-        if dummyCheck/int(dummyCheck) < checkNear/int(checkNear):
+        if (dummyCheck/int(dummyCheck)) < (checkNear/int(checkNear)):
             checkNear = dummyCheck
             print(checkNear)
         
@@ -82,7 +82,7 @@ if(x2LocBehindSrc >= nzsrcFromPml):
     print('The probe for fft is in the PML region')
     sys.exit()   
 
-MaterialDistFromPml = 70
+MaterialDistFromPml = 2*int(lamMin/dz)+1
 MaterialFrontEdge = MaterialDistFromPml + pmlWidth + domainSize/4  # Discrete tile where material begins (array index)
 MaterialWidth = Nz - MaterialFrontEdge
 MaterialRearEdge = MaterialFrontEdge + MaterialWidth
@@ -122,7 +122,7 @@ mu = np.ones(Nz)
 ###PML STUFF PARAMS
 
 kappaMax =12 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
-r_scale = 5# Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
+r_scale = 5.4# Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
 r_a_scale=1
 sigmaEMax =1.4*(0.8*(r_scale+1)/(dz*(permea_0/permit_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
 sigmaHMax = sigmaEMax#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
@@ -130,7 +130,7 @@ sigmaOpt  =sigmaEMax
 #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
 
 
-alphaMax= 0.24 # with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+alphaMax= 0.24# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
 
 
 # VARIABLES
