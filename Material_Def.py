@@ -16,7 +16,7 @@ muRe = 1
 muIm = 0
 
 c0 = sci.speed_of_light
-freq_in = 1e11
+freq_in = 1e9
 
 ### WILL NEED MAX FREQ WHEN HIGHER HARMONICS ARE PRESENT
 lamMin = c0/freq_in
@@ -30,7 +30,7 @@ CharImp =np.sqrt(permea_0)/np.sqrt(permit_0)
 
 period = 1/freq_in
 
-pmlWidth =50 +int(30*freq_in/(1e10))
+pmlWidth =150 +int(30*freq_in/(1e10))
 print('pmlWidth = ' , pmlWidth)
 if (pmlWidth >= 500):
     print('pmlWidth too big', pmlWidth)
@@ -41,8 +41,8 @@ dimen =1
 nonInt =  False
 
 Nz = domainSize +2*dimen*pmlWidth   #Grid size
-minRange = 500
-maxRange = 1000
+minRange = 3000
+maxRange = 4000
 for N in range(minRange,maxRange):
     check = (freq_in*N)/(1/delT)
     #print(check)
@@ -58,7 +58,7 @@ if(nonInt == True):
     checkNear = (freq_in*minRange)/(1/delT)
     for N in range(minRange, maxRange):
         dummyCheck = (freq_in*N)/(1/delT)
-        if dummyCheck/int(dummyCheck) < checkNear/int(checkNear):
+        if (dummyCheck/int(dummyCheck)) < (checkNear/int(checkNear)):
             checkNear = dummyCheck
             print(checkNear)
         
@@ -82,7 +82,7 @@ if(x2LocBehindSrc >= nzsrcFromPml):
     print('The probe for fft is in the PML region')
     sys.exit()   
 
-MaterialDistFromPml = 70
+MaterialDistFromPml = 2*int(lamMin/dz)+1
 MaterialFrontEdge = MaterialDistFromPml + pmlWidth + domainSize/4  # Discrete tile where material begins (array index)
 MaterialWidth = Nz - MaterialFrontEdge
 MaterialRearEdge = MaterialFrontEdge + MaterialWidth
@@ -122,7 +122,7 @@ mu = np.ones(Nz)
 ###PML STUFF PARAMS
 
 kappaMax =12 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
-r_scale = 5# Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
+r_scale = 5.4# Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
 r_a_scale=1
 sigmaEMax =1.4*(0.8*(r_scale+1)/(dz*(permea_0/permit_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
 sigmaHMax = sigmaEMax#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
@@ -130,7 +130,7 @@ sigmaOpt  =sigmaEMax
 #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
 
 
-alphaMax= 0.24 # with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+alphaMax= 0.24# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
 
 
 # VARIABLES
@@ -166,5 +166,120 @@ sigZmax =  (0.8*(m+1)/(dxyz*(mu0/eps0*epsR)^0.5));
 aZmax = 0.05; 
 kZmax = 1.0; 
 """
+  
+
+
+
+
+def matSetup(V,P, newFreq_in):
+    P.epsRe =9
+    P.epsIm = 0
+    P.muRe = 1
+    P.muIm = 0
+    P.freq_in = newFreq_in
+    P.lamMin = P.c0/P.freq_in
+    P.Nlam = np.floor(20*np.sqrt(P.epsRe*P.muRe))
+    P.dz =P.lamMin/P.Nlam  
+    P.courantNo = 1   # LOOK INTO 2D VERSION
+    P.delT = (P.courantNo*P.dz)/(P.c0)
+  
+
+    P.CharImp =np.sqrt(P.permea_0)/np.sqrt(P.permit_0)
+
+    P.period = 1/P.freq_in
+
+    P.pmlWidth =150 +int(30*P.freq_in/(1e10))
+    print('pmlWidth = ' , P.pmlWidth)
+    if (P.pmlWidth >= 500):
+        print('pmlWidth too big', P.pmlWidth)
+        sys.exit()
+    P.domainSize = 200 +int(5*P.freq_in/1e10)
+    print(P.domainSize, 'domainSize')
+    dimen =1
+    nonInt =  False
+
+    P.Nz = domainSize +2*dimen*pmlWidth   #Grid size
+    minRange = 3000
+    maxRange = 4000
+    for N in range(minRange,maxRange):
+        check = (P.freq_in*N)/(1/P.delT)
+        #print(check)
+        if check/int(check) ==1:
+            P.timeSteps = N 
+            break
+        elif N == maxRange-1:
+           print('Could not find timestep that allowed freq_in to fall on an integer frequency bin index with range provided.') 
+           #sys.exit()
+           nonInt = True
+       
+    if(nonInt == True):       
+        checkNear = (P.freq_in*minRange)/(1/P. delT)
+        for N in range(minRange, maxRange):
+            dummyCheck = (P.freq_in*N)/(1/P.delT)
+            if (dummyCheck/int(dummyCheck)) < (checkNear/int(checkNear)):
+                checkNear = dummyCheck
+                print(checkNear)
+        
+    P.timeSteps = N        
     
+    print('timesteps: ', P.timeSteps)
     
+    if(P.timeSteps >= 10000):
+        print('timeSteps too large')
+        sys.exit()
+    t=np.arange(0, P.timeSteps, 1)*(P.delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
+    
+    nzsrcFromPml = int(P.lamMin/P.dz)+1
+    if nzsrcFromPml >= P.domainSize/2:
+        print(nzsrcFromPml, 'src is too far into domain')
+        sys.exit()
+        
+    P.nzsrc = nzsrcFromPml + pmlWidth # Position of source 
+    x2LocBehindSrc = 10
+    if(x2LocBehindSrc >= nzsrcFromPml):
+        print('The probe for fft is in the PML region')
+        sys.exit()   
+    
+    MaterialDistFromPml = 2*int(P.lamMin/P.dz)+1
+    P.MaterialFrontEdge = MaterialDistFromPml + P.pmlWidth + P.domainSize/4  # Discrete tile where material begins (array index)
+    MaterialWidth = P.Nz - P.MaterialFrontEdge
+    P.MaterialRearEdge = P.MaterialFrontEdge + MaterialWidth
+    P.x1Loc = P.nzsrc+int((P.MaterialFrontEdge-P.nzsrc)/2)
+    P.x2Loc = P.nzsrc - (nzsrcFromPml-x2LocBehindSrc)    
+       
+
+"""
+    self.epsRe = epsRe
+        self.muRe = muRe
+        self.freq_in = freq_in
+        self.lamMin = lMin
+        self.Nlam = nlm
+        self.dz = dz
+        self.delT = delT
+        self.courantNo= courantNo
+        self.materialFrontEdge = matFront
+        self.materialRearEdge = matRear
+        self.Nz = gridNo
+        self.timeSteps = timeSteps
+        self.x1Loc = x1Loc
+        self.x2Loc = x2Loc
+        self.nzsrc = nzsrc
+        self.period = period
+        self.eLoss = eLoss
+        self.eSelfCo = eSelfCo
+        self.eHcompsCo = eHcompsCo
+        self.mLoss = mLoss
+        self.hSelfCo = hSelfCo
+        self.hEcompsCo = hEcompsCo
+        self.pmlWidth = pmlWidth
+
+
+        self.kappaMax=kappaMax
+        self.sigmaEMax=sigmaEMax
+        self.sigmaHMax=sigmaHMax
+        self.sigmaOpt=sigmaOpt
+        self.alphaMax=alphaMax
+        self.r_scale=r_scale
+        self.r_a_scale=r_a_scale
+
+"""

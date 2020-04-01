@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 """
 Fields controller, this script is the master that guides all the processes,
 calling the field updates and eventually particle updaters and field interpolater
@@ -65,7 +65,7 @@ class Params(object):
     CharImp =np.sqrt(permea_0/permit_0)
     c0 = 299792458.0
     
-    def __init__(self, epsRe, muRe, freq_in, lMin, nlm, dz, delT, courantNo, matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth, x2Loc ):
+    def __init__(self, epsRe, muRe, freq_in, lMin, nlm, dz, delT, courantNo, domainSize,  matRear, matFront, gridNo, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth, x2Loc ):
         self.epsRe = epsRe
         self.muRe = muRe
         self.freq_in = freq_in
@@ -89,6 +89,9 @@ class Params(object):
         self.hSelfCo = hSelfCo
         self.hEcompsCo = hEcompsCo
         self.pmlWidth = pmlWidth
+        self.domainSize = domainSize
+        self.inputVec = []
+        self.outputVec = []
     def __repr__(self):
         return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
     
@@ -239,7 +242,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        
       
       
-       
+       #output vec
        V.x1ColAf[count] = V.Ex_History[count][P.x2Loc] ##  X1 SHOULD BE ONE POINT! SPECIFY WITH E HISTORY ADDITIONAL INDEX.
        V.Hy_History[count] = np.insert(V.Hy_History[count], 0, V.Hy)
      
@@ -250,18 +253,62 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
 
     return V, P, C_V, C_P
 
-P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth, x2Loc )    
+P = Params(epsRe, muRe, freq_in, lamMin, Nlam, dz, delT, courantNo, domainSize, MaterialRearEdge, MaterialFrontEdge, Nz, timeSteps, x1Loc, nzsrc, period, eLoss, eSelfCo, eHcompsCo, mLoss, hEcompsCo, hSelfCo, pmlWidth, x2Loc )    
 V = Variables(UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History, Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf)
 C_P =  CPML_Params(kappaMax, sigmaEMax, sigmaHMax, sigmaOpt, alphaMax, r_scale, r_a_scale)
 C_V = CPML_Variables(kappa_Ex, kappa_Hy, psi_Ex, psi_Hy, alpha_Ex, alpha_Hy, sigma_Ex, sigma_Hy,beX, bmY, ceX, cmY, Ca, Cb, Cc, C1, C2, C3, eLoss_CPML, mLoss_CPML, den_Hydz, den_Exdz )
 
-V, P, C_V, C_P= Controller(V, P, C_V, C_P)
+
+#V, P, C_V, C_P=LoopSim(V,P, C_V, C_P, 0, 1e10 )
+""""
+
+
+def result(V, P. C_V, C_P, RefCo = False, FFT = False):
+    IF REFCO
+    SHOW REF VS ANALYTICAL
+    IF FFT 
+    SHOW FFT 
+    pass
+    
+def LoopedSim(V,P,C_V, C_P, loop =False, newFreq_in = 1e9, interval = 1e8, inSigSweep =  False, outRefl = False, outFFT = False):
+    if loop == True:
+        points = 3
+        ranger = np.arange(points)
+        freqRange =[]
+        SWITCH FOR SOURCE TYPE
+        SWITCH FOR PARAMETER BEING CHANGED, INSIGSWEEP,
+            CASE LOGIC: CREATE INPUTVEC OF PARAMETER SWEEP
+        for loop in range(ranger[0], ranger[len(ranger)], ranger[1]-ranger[0]):
+            freqRange[loop] = newFreq_in
+            matSetup(V,P, newFreq_in)
+            V, P, C_V, C_P= Controller(V, P, C_V, C_P)
+            newFreq_in = newFreq_in + interval
+            P.freq_in = newFreq_in
+            if inSigSweep 
+    elif loop==False:
+        matSetup(V,P, freq_in = newFreq)
+        V, P, C_V, C_P= Controller(V, P, C_V, C_P)
+        VideoMaker(P, V)
+        P.inputVec = t
+        
+        
+        
+    P.inputVec = freqRange
+    P.outputVec = 
+    return V, P, C_V, C_P
+"""
+
+
+
+#V, P, C_V, C_P = LoopedSim()
+
+#V, P, C_V, C_P= Controller(V, P, C_V, C_P)
 
 #Now we prepare to make the video including I/O stuff like setting up a new directory in the current working directory and 
 
 #deleting the old directory from previous run and overwriting.
 
-VideoMaker(P, V)
+#VideoMaker(P, V)
 #reflectionCalc(P,V)
 
 t =np.arange(0,len(x1ColBe))
