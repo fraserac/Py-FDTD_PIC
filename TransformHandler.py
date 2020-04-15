@@ -30,7 +30,7 @@ from matplotlib import pyplot as plt
 from decimal import *
 import sys
 
-def FourierTrans(P, V, itemForTransf1, itemForTransf2, x1Loc, time_vec, delT):
+def FourierTrans(P, V, itemForTransf1, itemForTransf2, time_vec, delT):
     sig_fft1 = 2*abs(fftpack.fft(itemForTransf1))  # 2 FACTOR COMES FROM SPLITTING ENERGY OVER POS AND NEG
     sig_fft2 = 2*abs(fftpack.fft(itemForTransf2))
    # 1/delT = fs
@@ -47,8 +47,8 @@ def FourierTrans(P, V, itemForTransf1, itemForTransf2, x1Loc, time_vec, delT):
    # sample_freq = fftpack.fftshift(sample_freq)
     #transmPow = np.abs(transm)
    # plt.plot(sample_freq, transmPow, label='Power spectrum freq. ')
-    reflectionCo = ReflectionCalc(P,V,  sample_freq, sig_fft1, sig_fft2)
-    print(reflectionCo)
+    #reflectionCo = ReflectionCalc(P,V,  sample_freq, sig_fft1, sig_fft2)
+    #print(reflectionCo)
     return transm, sig_fft1, sig_fft2, sample_freq
     
     # feed in x1ColBe and x1ColAf separately. 

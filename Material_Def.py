@@ -16,7 +16,7 @@ muRe = 1
 muIm = 0
 
 c0 = sci.speed_of_light
-freq_in = 1e9
+freq_in = 1e9  
 
 ### WILL NEED MAX FREQ WHEN HIGHER HARMONICS ARE PRESENT
 lamMin = c0/freq_in
@@ -41,8 +41,8 @@ dimen =1
 nonInt =  False
 
 Nz = domainSize +2*dimen*pmlWidth   #Grid size
-minRange = 3000
-maxRange = 4000
+minRange = 1000
+maxRange = 2000
 for N in range(minRange,maxRange):
     check = (freq_in*N)/(1/delT)
     #print(check)
@@ -97,25 +97,25 @@ hEcompsCo = 1/(1+mLoss)
 
 
 
-x1ColBe=[[]]*timeSteps 
-x1ColAf=[[]]*timeSteps
+x1ColBe=[[]] 
+x1ColAf=[[]]
 UpHySelf= np.ones(Nz)
 UpHyEcompsCo = np.ones(Nz)
 UpExSelf = np.ones(Nz)
 UpExHcompsCo =np.ones(Nz)
 UpExMat =np.zeros(Nz)
 UpHyMat = np.zeros(Nz)
-Ex =np.zeros(Nz)#,dtype=complex)
-Hy=np.zeros(Nz)#,dtype=complex)
-Ex_History= [[]]*timeSteps
-Hy_History= [[]]*timeSteps
-Psi_Ex_History= [[]]*timeSteps
-Psi_Hy_History= [[]]*timeSteps
+Ex =[]
+Hy=[]
+Ex_History= [[]]
+Hy_History= [[]]
+Psi_Ex_History= [[]]
+Psi_Hy_History= [[]]
 Hys = []
 Exs = []
 
-epsilon = np.ones(Nz)
-mu = np.ones(Nz)
+epsilon = []
+mu = []
 
 
 
@@ -171,7 +171,7 @@ kZmax = 1.0;
 
 
 
-def matSetup(V,P, newFreq_in):
+def matSetup(V,P, newFreq_in = freq_in):
     P.epsRe =9
     P.epsIm = 0
     P.muRe = 1
@@ -183,8 +183,6 @@ def matSetup(V,P, newFreq_in):
     P.courantNo = 1   # LOOK INTO 2D VERSION
     P.delT = (P.courantNo*P.dz)/(P.c0)
   
-
-    P.CharImp =np.sqrt(P.permea_0)/np.sqrt(P.permit_0)
 
     P.period = 1/P.freq_in
 
@@ -199,8 +197,8 @@ def matSetup(V,P, newFreq_in):
     nonInt =  False
 
     P.Nz = domainSize +2*dimen*pmlWidth   #Grid size
-    minRange = 3000
-    maxRange = 4000
+    minRange = 1000
+    maxRange = 2000
     for N in range(minRange,maxRange):
         check = (P.freq_in*N)/(1/P.delT)
         #print(check)

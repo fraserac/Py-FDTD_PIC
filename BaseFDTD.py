@@ -138,6 +138,9 @@ def FieldInit(V,P):
     V.Psi_Hy_History= [[]]*P.timeSteps
     V.Exs = []
     V.Hys = []
+   
+    
+    
     return V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys
 
 
@@ -178,15 +181,17 @@ def EmptySpaceCalc(V,P): # this function will run the FDTD over just the initial
 
 
 def Material(V,P):
+    V.epsilon = np.ones(P.Nz)
+    V.mu = np.ones(P.Nz)
     for kj in range(P.Nz):
-            if(kj < P.materialFrontEdge):  
+            if(kj < int(P.materialFrontEdge)):  
                 V.epsilon[kj] = 1
                 V.mu[kj] = 1
                 V.UpExHcompsCo[kj] =1
                 V.UpExSelf[kj] =1
                 V.UpHyEcompsCo[kj] =1
                 V.UpHySelf[kj] = 1
-            if(kj >= P.materialFrontEdge and kj < P.materialRearEdge):
+            if(kj >= int(P.materialFrontEdge) and kj < int(P.materialRearEdge)):
                 V.epsilon[kj] = P.epsRe
                 V.mu[kj] = P.muRe
                 V.UpExHcompsCo[kj] = P.eHcompsCo
@@ -442,7 +447,7 @@ def CPML_Psi_e_Update(V,P, C_V, C_P):   # recursive convolution for E field REF
     
     return C_V.psi_Ex, V.Ex 
 
-
+ 
 def CPML_Psi_m_Update(V,P, C_V, C_P):   # recursive convolution for H field REF
     for nz in range(0, P.Nz-2): 
         C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz]-V.Ex[nz+1])
@@ -461,9 +466,6 @@ def CPML_HyUpdate(V,P, C_V, C_P):
 
 def CPML_ExUpdate(V,P, C_V, C_P):
     for nz in range(1, P.Nz-1):
-        #print(nz)
-        #print("************************** ")
-        #breakpoint()
         V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]*C_V.den_Exdz[nz]
         #V.Ex[nz]= C_V.Ca[nz]*V.Ex[nz]+C_V.Cb[nz]*(V.Hy[nz-1]-V.Hy[nz])*C_V.den_Exdz[nz]
     return V.Ex
@@ -477,6 +479,9 @@ def CPML_PEC(V, P, C_V, C_P):
 def CPML_PMC(V,P,C_V, C_P):
     V.Hy[P.Nz-1]=0
     return V.Hy[P.Nz-1]
+
+
+def PLRC(V,P, C_V, C_P):
 """
 Issue: feed fields back and forth. RETURN uphy etc etc , call
 """
