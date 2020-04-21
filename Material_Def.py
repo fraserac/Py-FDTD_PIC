@@ -117,6 +117,9 @@ Exs = []
 epsilon = []
 mu = []
 
+Px = []
+My = []
+
 
 
 ###PML STUFF PARAMS

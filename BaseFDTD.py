@@ -138,6 +138,8 @@ def FieldInit(V,P):
     V.Psi_Hy_History= [[]]*P.timeSteps
     V.Exs = []
     V.Hys = []
+    V.polarisationCurr = 0.0# return later
+    V.tempPolPrev = 0.0
    
     
     
@@ -482,6 +484,53 @@ def CPML_PMC(V,P,C_V, C_P):
 
 
 def PLRC(V,P, C_V, C_P):
+    #implementation of PLRC --- small novelty?
+    
+    
+    pass
+
+
+
+
+def ADE_HyUpdate(V, P, C_V, C_P):
+    #Should be linear case
+    for nz in range(1, P.Nz-1):
+        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz]) ## COURANT NO.
+    return V.Hy
+
+def ADE_MyUpdate():
+    
+    pass
+
+def ADE_ExUpdate(V, P, C_V, C_P):
+    #linear polarization
+    for nz in range(1, P.Nz-1):
+        V.Ex[nz] = V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])
+    return V.Ex
+
+def ADE_PxUpdate():
+    
+    pass
+
+
+
+
+
+
+
+def ADE_NonLinMyUpdate():
+    pass
+
+def ADE_NonLinPxUpdate():
+    pass
+
+def SpatialFiltering():
+    
+    pass
+
+def SymbolicRegression():
+    pass
+
 """
 Issue: feed fields back and forth. RETURN uphy etc etc , call
 """

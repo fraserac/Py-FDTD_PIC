@@ -29,7 +29,7 @@ from TransformHandler import FourierTrans, ReflectionCalc
 
 
 class Variables(object):
-    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History,Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf):
+    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History,Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf, Px, My):
         self.UpHyMat = UpHyMat
         self.UpExMat = UpExMat
         self.UpExHcompsCo = UpExHcompsCo
@@ -50,6 +50,10 @@ class Variables(object):
         self.mu = mu
         self.inputVec = []
         self.outputPlots = []
+        self.Px = Px
+        self.My = My
+        self.polarisationCurr = 0.0
+        self.tempPolPrev = 0.0
     def __str__(self):
         return 'Contains data that will change during sim'
     
@@ -258,7 +262,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
     return V, P, C_V, C_P
 
 P = Params(matDef.epsRe, matDef.muRe, matDef.freq_in, matDef.lamMin, matDef.Nlam, matDef.dz, matDef.delT, matDef.courantNo, matDef.domainSize, matDef.MaterialRearEdge, matDef.MaterialFrontEdge, matDef.Nz, matDef.timeSteps, matDef.x1Loc, matDef.nzsrc, matDef.period, matDef.eLoss, matDef.eSelfCo, matDef.eHcompsCo, matDef.mLoss, matDef.hEcompsCo, matDef.hSelfCo, matDef.pmlWidth, matDef.x2Loc )    
-V = Variables(matDef.UpHyMat, matDef.UpExMat, matDef.Ex, matDef.Hy, matDef.Ex_History, matDef.Hy_History, matDef.Psi_Ex_History, matDef.Psi_Hy_History, matDef.Hys, matDef.Exs, matDef.x1ColBe, matDef.x1ColAf, matDef.epsilon, matDef.mu, matDef.UpExHcompsCo, matDef.UpExSelf, matDef.UpHyEcompsCo, matDef.UpHySelf)
+V = Variables(matDef.UpHyMat, matDef.UpExMat, matDef.Ex, matDef.Hy, matDef.Ex_History, matDef.Hy_History, matDef.Psi_Ex_History, matDef.Psi_Hy_History, matDef.Hys, matDef.Exs, matDef.x1ColBe, matDef.x1ColAf, matDef.epsilon, matDef.mu, matDef.UpExHcompsCo, matDef.UpExSelf, matDef.UpHyEcompsCo, matDef.UpHySelf, matDef.Px, matDef.My)
 C_P =  CPML_Params(matDef.kappaMax, matDef.sigmaEMax, matDef.sigmaHMax, matDef.sigmaOpt, matDef.alphaMax, matDef.r_scale, matDef.r_a_scale)
 C_V = CPML_Variables(matDef.kappa_Ex, matDef.kappa_Hy, matDef.psi_Ex, matDef.psi_Hy, matDef.alpha_Ex, matDef.alpha_Hy, matDef.sigma_Ex, matDef.sigma_Hy,matDef.beX, matDef.bmY, matDef.ceX, matDef.cmY, matDef.Ca, matDef.Cb, matDef.Cc, matDef.C1, matDef.C2, matDef.C3, matDef.eLoss_CPML, matDef.mLoss_CPML, matDef.den_Hydz, matDef.den_Exdz )
 

@@ -3,13 +3,19 @@
 Created on Mon Jan 27 17:36:07 2020
 
 @author: Owner
+
+This script tests basefdtd script functions, with as many unit tests as possible, physics 
+tests are done as full or partial model tests, whereby bulk code is run and output is tested against 
+either an analytical value for a known result or/and checked against physical conservation laws.
+
 """
 
 import unittest
-from BaseFDTD import FieldInit, SmoothTurnOn, EmptySpaceCalc
+from BaseFDTD import FieldInit, SmoothTurnOn, EmptySpaceCalc, Material, UpdateCoef
 import Material_Def as matDef
 import numpy as np
-
+import sys
+import inspect
 class Variables_test(object):
     def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History,Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf):
         self.UpHyMat = UpHyMat
@@ -161,6 +167,28 @@ class TestBaseFDTD(unittest.TestCase):
         Pt, Vt, C_Pt, C_Vt = self.SetUpInitial()
         self.assertEqual(len(EmptySpaceCalc(Vt,Pt)[1]), Pt.Nz+1)
         del Pt, Vt, C_Vt, C_Pt
+        
+    def test_Material(self):
+        Pt, Vt, C_Pt, C_Vt = self.SetUpInitial()
+        for i in range(len(Material(Vt,Pt))):
+            if not isinstance(Material(Vt,Pt)[i], np.ndarray):
+               print("Output from Material function, ", i,", is not a number.") 
+               del Pt, Vt, C_Vt, C_Pt
+               sys.exit() 
+        
+    
+    def test_UpdateCoef(self):
+        Pt, Vt, C_Pt, C_Vt = self.SetUpInitial()
+        
+        del Pt, Vt, C_Vt, C_Pt
+        
+    
+    def HyTfsfCorr(self):
+        Pt, Vt, C_Pt, C_Vt = self.SetUpInitial()
+        
+        del Pt, Vt, C_Vt, C_Pt
+        
+    
         
         
         
