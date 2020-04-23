@@ -29,7 +29,7 @@ from TransformHandler import FourierTrans, ReflectionCalc
 
 
 class Variables(object):
-    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History,Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf, Px, My):
+    def __init__(self, UpHyMat, UpExMat, Ex, Hy, Ex_History, Hy_History,Psi_Ex_History, Psi_Hy_History, Hys, Exs, x1ColBe, x1ColAf, epsilon, mu, UpExHcompsCo, UpExSelf, UpHyEcompsCo, UpHySelf, Dx, My):
         self.UpHyMat = UpHyMat
         self.UpExMat = UpExMat
         self.UpExHcompsCo = UpExHcompsCo
@@ -38,6 +38,8 @@ class Variables(object):
         self.UpHyEcompsCo = UpHyEcompsCo 
         self.Ex = Ex
         self.Hy = Hy
+        self.Dx = Dx
+       # self.By = By
         self.Ex_History = Ex_History
         self.Hy_History = Hy_History
         self.Psi_Ex_History= Psi_Ex_History
@@ -50,10 +52,11 @@ class Variables(object):
         self.mu = mu
         self.inputVec = []
         self.outputPlots = []
-        self.Px = Px
-        self.My = My
-        self.polarisationCurr = 0.0
-        self.tempPolPrev = 0.0
+        self.polarisationCurr = np.zeros(P.Nz+1)
+        self.plasmaFreqE = 1.426e17
+        self.gammaE = 0.1202e9
+        self.omega_0E =2*np.pi*0.82e9
+        self.tempVarPol =[]
     def __str__(self):
         return 'Contains data that will change during sim'
     
@@ -159,7 +162,7 @@ class CPML_Variables(object):
 #FUNCTION THAT LOADS IN MATERIAL DEF, CAN BE PASSED IN AS A FIRST CLASS FUNCTION, RETURNS ALL
 #PARAMETERS.
 def Controller(V, P, C_V, C_P):  #Needs dot syntax
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History,V.Exs, V.Hys = BaseFDTD.FieldInit(V,P)
+    V.polarisationCurr, V.Ex, V.Dx, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History,V.Exs, V.Hys = BaseFDTD.FieldInit(V,P)
     V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
     
     V.UpHyMat, V.UpExMat = BaseFDTD.EmptySpaceCalc(V,P)   #RENAME EMPTY SPACE CALC
@@ -170,24 +173,31 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        #V.Hy[P.Nz-1] = HyBC(V,P)
        #print(counts ,'counts 1')
        
-       
+       """
        C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy= BaseFDTD.CPML_ScalingCalc(V, P, C_V, C_P)
        C_V.beX, C_V.ceX = BaseFDTD.CPML_Ex_RC_Define(V, P, C_V, C_P)
        C_V.bmY, C_V.cmY = BaseFDTD.CPML_HY_RC_Define(V, P, C_V, C_P)
        C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD.CPML_Ex_Update_Coef(V,P, C_V, C_P)
        C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
        C_V.den_Exdz, C_V.den_Hydz = BaseFDTD.denominators(V, P, C_V, C_P)
-       
-       
-       V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
-       C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
+       """
+       V.polarisationCurr, V.tempVarPol = BaseFDTD.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
+       #V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
+       V.Hy = BaseFDTD.ADE_HyUpdate(V, P, C_V, C_P)
+      # C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
        
        
        V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, counts)
        V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, counts)
+       
       
-       V.Ex = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
-       C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
+       #V.Ex = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
+       V.Ex =BaseFDTD.ADE_ExUpdate(V, P, C_V, C_P)
+       
+       
+       V.Dx = BaseFDTD.ADE_DxUpdate(V, P, C_V, C_P)
+       V.Ex = BaseFDTD.ADE_ExCreate(V, P, C_V, C_P)
+       #C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
        
        
      
@@ -195,8 +205,8 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
       
        
        V.Ex_History[counts] = np.insert(V.Ex_History[counts], 0, V.Ex)
-       V.Psi_Ex_History[counts] = np.insert(V.Psi_Ex_History[counts], 0, C_V.psi_Ex)
-       V.Psi_Hy_History[counts] = np.insert(V.Psi_Hy_History[counts], 0, C_V.psi_Hy)
+       #V.Psi_Ex_History[counts] = np.insert(V.Psi_Ex_History[counts], 0, C_V.psi_Ex)
+       #V.Psi_Hy_History[counts] = np.insert(V.Psi_Hy_History[counts], 0, C_V.psi_Hy)
        
        
      
@@ -212,38 +222,47 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
      
     
     
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History  = BaseFDTD.Material(V,P)
-    V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys = BaseFDTD.FieldInit(V,P)
+    V.UpHyMat, V.UpExMat = BaseFDTD.EmptySpaceCalc(V,P)  
+    V.polarisationCurr, V.Ex,  V.Dx, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys = BaseFDTD.FieldInit(V,P)
     V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
-    V.UpHyMat, V.UpExMat = BaseFDTD.UpdateCoef(V,P)
-    C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
+    #V.UpHyMat, V.UpExMat = BaseFDTD.UpdateCoef(V,P)
+    #C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
     for count in range(P.timeSteps):   ### for media one transmission
     
        #print(count ,'count 2')
+       """
        C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy= BaseFDTD.CPML_ScalingCalc(V, P, C_V, C_P)
        C_V.beX, C_V.ceX = BaseFDTD.CPML_Ex_RC_Define(V, P, C_V, C_P)
        C_V.bmY, C_V.cmY = BaseFDTD.CPML_HY_RC_Define(V, P, C_V, C_P)
        C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD.CPML_Ex_Update_Coef(V,P, C_V, C_P)
        C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
        C_V.den_Exdz, C_V.den_Hydz = BaseFDTD.denominators(V, P, C_V, C_P)
+       """
        
-       
-       V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
-       C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
+       V.polarisationCurr, V.tempVarPol = BaseFDTD.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
+       #V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
+       V.Hy = BaseFDTD.ADE_HyUpdate(V, P, C_V, C_P)
+      # C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
       
        V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, count)
        V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, count)
       
-       V.Ex = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
-       C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
+       
+       #V.Ex = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
+       V.Ex =BaseFDTD.ADE_ExUpdate(V, P, C_V, C_P)
+
+       V.Dx = BaseFDTD.ADE_DxUpdate(V, P, C_V, C_P)
+       V.Ex = BaseFDTD.ADE_ExCreate(V, P, C_V, C_P)
+      # C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
+       
        
        
       
-       V.Hy[P.Nz-1]= BaseFDTD.CPML_PMC(V,P,C_V, C_P)
+       #V.Hy[P.Nz-1]= BaseFDTD.CPML_PMC(V,P,C_V, C_P)
        
        V.Ex_History[count] = np.insert(V.Ex_History[count], 0, V.Ex)
-       V.Psi_Ex_History[count] = np.insert(V.Psi_Ex_History[count], 0, C_V.psi_Ex)
-       V.Psi_Hy_History[count] = np.insert(V.Psi_Hy_History[count], 0, C_V.psi_Hy)
+      # V.Psi_Ex_History[count] = np.insert(V.Psi_Ex_History[count], 0, C_V.psi_Ex)
+       #V.Psi_Hy_History[count] = np.insert(V.Psi_Hy_History[count], 0, C_V.psi_Hy)
        
        
        
@@ -262,7 +281,7 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
     return V, P, C_V, C_P
 
 P = Params(matDef.epsRe, matDef.muRe, matDef.freq_in, matDef.lamMin, matDef.Nlam, matDef.dz, matDef.delT, matDef.courantNo, matDef.domainSize, matDef.MaterialRearEdge, matDef.MaterialFrontEdge, matDef.Nz, matDef.timeSteps, matDef.x1Loc, matDef.nzsrc, matDef.period, matDef.eLoss, matDef.eSelfCo, matDef.eHcompsCo, matDef.mLoss, matDef.hEcompsCo, matDef.hSelfCo, matDef.pmlWidth, matDef.x2Loc )    
-V = Variables(matDef.UpHyMat, matDef.UpExMat, matDef.Ex, matDef.Hy, matDef.Ex_History, matDef.Hy_History, matDef.Psi_Ex_History, matDef.Psi_Hy_History, matDef.Hys, matDef.Exs, matDef.x1ColBe, matDef.x1ColAf, matDef.epsilon, matDef.mu, matDef.UpExHcompsCo, matDef.UpExSelf, matDef.UpHyEcompsCo, matDef.UpHySelf, matDef.Px, matDef.My)
+V = Variables(matDef.UpHyMat, matDef.UpExMat, matDef.Ex, matDef.Hy, matDef.Ex_History, matDef.Hy_History, matDef.Psi_Ex_History, matDef.Psi_Hy_History, matDef.Hys, matDef.Exs, matDef.x1ColBe, matDef.x1ColAf, matDef.epsilon, matDef.mu, matDef.UpExHcompsCo, matDef.UpExSelf, matDef.UpHyEcompsCo, matDef.UpHySelf, matDef.Dx, matDef.My)
 C_P =  CPML_Params(matDef.kappaMax, matDef.sigmaEMax, matDef.sigmaHMax, matDef.sigmaOpt, matDef.alphaMax, matDef.r_scale, matDef.r_a_scale)
 C_V = CPML_Variables(matDef.kappa_Ex, matDef.kappa_Hy, matDef.psi_Ex, matDef.psi_Hy, matDef.alpha_Ex, matDef.alpha_Hy, matDef.sigma_Ex, matDef.sigma_Hy,matDef.beX, matDef.bmY, matDef.ceX, matDef.cmY, matDef.Ca, matDef.Cb, matDef.Cc, matDef.C1, matDef.C2, matDef.C3, matDef.eLoss_CPML, matDef.mLoss_CPML, matDef.den_Hydz, matDef.den_Exdz )
 
@@ -283,7 +302,7 @@ def plotter(xAxisData, yAxisData, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = "
     fig, ax = plt.subplots()
     ax.clear()
     ax.plot(xAxisData, yAxisData)
-    ax.set_ylim(0, 1)    
+    ax.set_ylim(-yAxisLim, yAxisLim)    
     pass
   
 InputSweepSwitch = {"Input frequency sweep": results,
@@ -305,6 +324,7 @@ def LoopedSim(V,P,C_V, C_P, stringparamSweep = "Input frequency sweep", loop =Fa
                 matDef.matSetup(V,P, dataRange[loop]) #, should return something? frequency dependence of environment, maybe tuples?
                 V, P, C_V, C_P= Controller(V, P, C_V, C_P)
                 t =np.arange(0,len(V.x1ColBe))
+                
                 freqDomYAxisRef[loop] = results(V, P, C_V, C_P, t, loop, True) # One refco y point
                 print(freqDomYAxisRef)
         #plotter( relevant info) 
@@ -314,14 +334,18 @@ def LoopedSim(V,P,C_V, C_P, stringparamSweep = "Input frequency sweep", loop =Fa
     elif loop == False:
         matDef.matSetup(V,P)
         V, P, C_V, C_P= Controller(V, P, C_V, C_P)
+        xAxis = np.zeros(P.Nz+1)
+        for i in range(0, P.Nz):
+            xAxis[i] = i
+        plotter(xAxis, V.Ex_History[250], yAxisLim =2)  
         VideoMaker(P, V)
-      
+        
     return V, P, C_V, C_P
 
 
 
 
-V, P, C_V, C_P = LoopedSim(V,P,C_V, C_P, loop = True)
+V, P, C_V, C_P = LoopedSim(V,P,C_V, C_P, loop = False)
 
 #V, P, C_V, C_P= Controller(V, P, C_V, C_P)
 

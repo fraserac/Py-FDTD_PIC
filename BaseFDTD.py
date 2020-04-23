@@ -138,12 +138,11 @@ def FieldInit(V,P):
     V.Psi_Hy_History= [[]]*P.timeSteps
     V.Exs = []
     V.Hys = []
-    V.polarisationCurr = 0.0# return later
-    V.tempPolPrev = 0.0
-   
+    V.polarisationCurr = np.zeros(P.Nz+1)# return later
+    V.Dx = np.zeros(P.Nz+1)
+    V.tempVarPol = np.zeros(P.Nz+1)
     
-    
-    return V.Ex, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys
+    return V.polarisationCurr, V.Ex, V.Dx, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys
 
 
 def SmoothTurnOn(V,P):
@@ -461,14 +460,14 @@ def CPML_Psi_m_Update(V,P, C_V, C_P):   # recursive convolution for H field REF
 
 def CPML_HyUpdate(V,P, C_V, C_P):
     for nz in range(0, P.Nz-2):
-        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]*C_V.den_Hydz[nz]
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*V.UpHyEcompsCo[nz]#*C_V.den_Hydz[nz]
         #V.Hy[nz]= C_V.C1[nz]*V.Hy[nz]+C_V.C2[nz]*(V.Ex[nz]-V.Ex[nz+1])*C_V.den_Hydz[nz]
     return V.Hy
 
 
 def CPML_ExUpdate(V,P, C_V, C_P):
     for nz in range(1, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]*C_V.den_Exdz[nz]
+        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#*C_V.den_Exdz[nz]
         #V.Ex[nz]= C_V.Ca[nz]*V.Ex[nz]+C_V.Cb[nz]*(V.Hy[nz-1]-V.Hy[nz])*C_V.den_Exdz[nz]
     return V.Ex
 
@@ -489,30 +488,58 @@ def PLRC(V,P, C_V, C_P):
     
     pass
 
+# NEED TO SET UP ADE VARIABLES TO BE ZERO WHEN NOT IN MATERIAL, MAKE ARRAY
 
-
+def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
+    #take vars from re-arragement and use to update polarisationCurr
+    A = (2-P.delT**2*V.omega_0E**2)/(1+0.5*P.delT*V.gammaE)
+    B = (0.5*P.delT*V.gammaE-1)/(0.5*P.delT*V.gammaE+1)
+    C = (P.delT**2*P.permit_0*V.plasmaFreqE**2)/(1+0.5*P.delT*V.gammaE)
+    
+    for nz in range (int(P.materialFrontEdge-1), int(P.materialRearEdge-1)):
+        V.tempVarPol[nz] = V.polarisationCurr[nz]
+        V.polarisationCurr[nz] = A*V.polarisationCurr[nz]+ B*V.tempVarPol[nz] +C*V.Ex[nz]
+    return V.polarisationCurr, V.tempVarPol
 
 def ADE_HyUpdate(V, P, C_V, C_P):
-    #Should be linear case
-    for nz in range(1, P.Nz-1):
-        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz]) ## COURANT NO.
+    #free space calc:
+    for nz in range(0, int(P.materialFrontEdge)):
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz] ## COURANT NO.
+     
+    if P.materialRearEdge < P.Nz-1:
+        for nzz in range(int(P.materialRearEdge-1), P.Nz):
+            V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+    #if P.MaterialRearEdge >= P.Nz-1:
     return V.Hy
-
+        
 def ADE_MyUpdate():
     
     pass
 
-def ADE_ExUpdate(V, P, C_V, C_P):
+def ADE_ExUpdate(V, P, C_V, C_P): #### WRONG COEFFICIENTS 
     #linear polarization
-    for nz in range(1, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])
+    for nz in range(1, int(P.materialFrontEdge)):
+        V.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]
+    
+    if P.materialRearEdge < P.Nz-1:
+        for nzz in range(int(P.materialRearEdge-1), P.Nz):
+            V.Ex[nz] = V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]
+    return V.Ex#
+
+
+
+
+def ADE_ExCreate(V, P, C_V, C_P):
+    for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)-1):
+        V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/(P.permit_0)  #acting like hard source
     return V.Ex
 
-def ADE_PxUpdate():
-    
-    pass
+def ADE_DxUpdate(V, P, C_V, C_P):
+    for nz in range(int(P.materialFrontEdge), int(P.materialRearEdge-1)):
+        V.Dx[nz] = V.Dx[nz] +(V.Hy[nz] - V.Hy[nz])*(1/P.CharImp)*P.courantNo
+    return V.Dx
 
-
+#SET UP TEMP POLLCURR VAR, POLLCURR q+ 1 = A* POLLCURR  q + B*pollcurrTemp + C*E q
 
 
 
