@@ -44,7 +44,7 @@ nonInt =  False
 
 Nz = domainSize +2*dimen*pmlWidth   #Grid size
 minRange = 1000
-maxRange = 2000
+maxRange = 1001
 for N in range(minRange,maxRange):
     check = (freq_in*N)/(1/delT)
     #print(check)
@@ -206,7 +206,7 @@ def matSetup(V,P, newFreq_in = freq_in):
 
     P.Nz = domainSize +2*dimen*pmlWidth   #Grid size
     minRange = 1000
-    maxRange = 2000
+    maxRange = 1001
     for N in range(minRange,maxRange):
         check = (P.freq_in*N)/(1/P.delT)
         #print(check)

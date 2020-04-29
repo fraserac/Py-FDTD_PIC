@@ -147,22 +147,50 @@ def FieldInit(V,P):
 
 
 def SmoothTurnOn(V,P):
+    V.Exs = np.zeros(P.timeSteps)
+    V.Hys = np.zeros(P.timeSteps)
     ppw =  P.c0 /(P.freq_in*P.dz)
+    phase1 = False
+    phase2 = False
+    p1Ind = 0
+    p2Ind = 0
+  
+    
     for timer in range(P.timeSteps):
-        if(timer*P.delT < P.period):
-            V.Exs.append(float(Decimal(np.sin(2.0*np.pi/ppw*(P.courantNo*timer)))))
-            V.Hys.append(float(Decimal(np.sin(2.0*np.pi/ppw*(P.courantNo*(timer+1))))))
-        elif(timer*P.delT >= P.period):  
-            V.Exs.append(0)
-            V.Hys.append(0)
+        V.Exs[timer] = (np.sin(2.0*np.pi/ppw*(P.courantNo*timer)))
+        V.Hys[timer] = (np.sin(2.0*np.pi/ppw*(P.courantNo*(timer+1))))
+        if(V.Exs[timer] <0 and phase1 == False):
+             p1Ind = timer 
+             phase1 = True
+             print(p1Ind, "p1Ind")
+        if(V.Exs[timer] >0 and phase1 == True and phase2 == False):
+            p2Ind = timer 
+            phase2 =True
+            print(p2Ind, "p2Ind")
+        if(phase2 == True) and phase1 == True:
+            V.Exs[timer] = 0.0
+            V.Hys[timer] =0.0
+        if(V.Hys[p2Ind] != 0 and phase2== True):
+            V.Hys[p2Ind] = 0.0;
+            
+            
+    """
     for boo in range(P.timeSteps):
         if(V.Hys[boo] ==0):
-          V.Hys[boo-1] =0
-        #if(V.Exs[boo] ==0):
-         # V.Exs[boo-1] =0
-          break    
+            matcher = boo
+        if(V.Exs[matcher] !=0):
+            for counter in range(matcher, len(V.Exs)-1):
+                V.Exs[counter] = 0.0
+                break    
+    for bob in range(P.timeSteps):
+        if(V.Exs[boo] ==0):
+            matcher = boo
+        if(V.Hys[matcher] !=0):
+            for counter in range(matcher, len(V.Exs)-1):
+                V.Hys[counter] = 0.0
+                break    
+     """   
     return V.Exs, V.Hys   
-# FIX TURN OFF JITTER
 
 
 def EmptySpaceCalc(V,P): # this function will run the FDTD over just the initial media and measure the points at x1 over t
@@ -501,13 +529,13 @@ def ADE_TempPolCurr(V,P):
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
     #take vars from re-arragement and use to update polarisationCurr
     D= (1/P.delT**2)+(V.gammaE/(2*P.delT))
-    print("D ", D)
+    #print("D ", D)
     A = ((2/P.delT**2)-V.omega_0E**2)/D
-    print("A", A)
+    #print("A", A)
     B = ((V.gammaE/(2*P.delT))-1/P.delT**2)/D
-    print(B)
+    #print(B)
     C = (P.permit_0*(V.plasmaFreqE**2))/D
-    print(C)
+    #print(C)
   
     for nz in range (int(P.materialFrontEdge-1), int(P.materialRearEdge)):### PROBLEM # TEMP VAR POL ISSUE
         V.polarisationCurr[nz] = A*V.tempVarPol[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]

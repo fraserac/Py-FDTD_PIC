@@ -180,22 +180,15 @@ def Controller(V, P, C_V, C_P):  #Needs dot syntax
        C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
        C_V.den_Exdz, C_V.den_Hydz = BaseFDTD.denominators(V, P, C_V, C_P)
        """
-       #V.polarisationCurr, V.tempVarPol = BaseFDTD.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
+       V.tempTempVarPol, V.tempVarPol = BaseFDTD.ADE_TempPolCurr(V,P)
+       V.polarisationCurr = BaseFDTD.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
        #V.Hy = BaseFDTD.CPML_HyUpdate(V,P, C_V, C_P)
-       V.Hy = BaseFDTD.ADE_HyUpdate(V, P, C_V, C_P)
-      # V.Ex = BaseFDTD.ADE_ExCreate(V, P, C_V, C_P)
-       
-       V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, counts)
-       
-      # C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
-       
-       #V.Dx = BaseFDTD.ADE_DxUpdate(V, P, C_V, C_P)
-       
+       V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, counts) 
+       V.Ex =BaseFDTD.ADE_ExUpdate(V, P, C_V, C_P)
        V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, counts)
        
-       
-       V.Ex =BaseFDTD.ADE_ExUpdate(V, P, C_V, C_P)
-       #V.Ex = BaseFDTD.CPML_ExUpdate(V,P, C_V, C_P)
+       V.Dx, V.Ex = BaseFDTD.ADE_DxUpdate(V, P, C_V, C_P)
+       V.Hy = BaseFDTD.ADE_HyUpdate(V, P, C_V, C_P)
        
        
        
