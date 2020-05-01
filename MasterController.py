@@ -154,36 +154,39 @@ class CPML_Variables(object):
     def __str__(self):
         return 'Class containing all CPML values that vary throughout a sim' 
 
-def Controller(V, P, C_V, C_P):  
-    for i in range(2):
+def Controller(V, P, C_V, C_P):
+    V.x1ColBe = [[]]*(P.timeSteps)
+    V.x1ColAf = [[]]*(P.timeSteps)
+    for i in range(0,2):
         V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History,V.Exs, V.Hys = BaseFDTD.FieldInit(V,P)
         V.Exs, V.Hys = BaseFDTD.SmoothTurnOn(V,P)
-    
+        #print(i)
         V.UpHyMat, V.UpExMat = BaseFDTD.EmptySpaceCalc(V,P)   
         C_V = BaseFDTD.CPML_FieldInit(V,P, C_V, C_P)
-        V.x1ColBe = [[]]*(P.timeSteps)
-        V.x1ColAf = [[]]*(P.timeSteps)
+        counts = 0
         for counts in range(0,P.timeSteps):
-               """
+               
                C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy= BaseFDTD.CPML_ScalingCalc(V, P, C_V, C_P)
                C_V.beX, C_V.ceX = BaseFDTD.CPML_Ex_RC_Define(V, P, C_V, C_P)
                C_V.bmY, C_V.cmY = BaseFDTD.CPML_HY_RC_Define(V, P, C_V, C_P)
                C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD.CPML_Ex_Update_Coef(V,P, C_V, C_P)
                C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD.CPML_Hy_Update_Coef(V,P, C_V, C_P)
                C_V.den_Exdz, C_V.den_Hydz = BaseFDTD.denominators(V, P, C_V, C_P)
-               """
+               
                if i == 1:
                		V.tempTempVarPol, V.tempVarPol = BaseFDTD.ADE_TempPolCurr(V,P)
                		V.polarisationCurr = BaseFDTD.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
             
                V.Hy[P.nzsrc-1] = BaseFDTD.HyTfSfCorr(V,P, counts) 
                V.Ex =BaseFDTD.ADE_ExUpdate(V, P, C_V, C_P)
+               
                V.Ex[P.nzsrc] = BaseFDTD.ExTfSfCorr(V,P, counts)
                
                if i == 1: 
                		V.Dx, V.Ex = BaseFDTD.ADE_DxUpdate(V, P, C_V, C_P)
-            
+               C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
                V.Hy = BaseFDTD.ADE_HyUpdate(V, P, C_V, C_P)
+               C_V.psi_Hy, V.Hy  = BaseFDTD.CPML_Psi_m_Update(V,P, C_V, C_P)
               
                #C_V.psi_Ex, V.Ex  = BaseFDTD.CPML_Psi_e_Update(V,P, C_V, C_P)
                V.Ex_History[counts] = np.insert(V.Ex_History[counts], 0, V.Ex)
@@ -192,14 +195,14 @@ def Controller(V, P, C_V, C_P):
                V.Hy_History[counts] = np.insert(V.Hy_History[counts], 0, V.Hy)
                
                if i ==0:
-                    if counts <= P.timeSteps-1:
-                       V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] 
+                   V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc]
                    
-               elif i ==1:
-                    if counts <= P.timeSteps-1:
-                        V.x1ColAf[counts] = V.Ex_History[counts][P.x1Loc] 
+                  
+           
+               if i ==1:
+                   V.x1ColAf[counts] = V.Ex_History[counts][P.x2Loc] 
                    
-		
+                  	
     return V, P, C_V, C_P
 
 
@@ -208,16 +211,24 @@ V = Variables(matDef.UpHyMat, matDef.UpExMat, matDef.Ex, matDef.Hy, matDef.Ex_Hi
 C_P =  CPML_Params(matDef.kappaMax, matDef.sigmaEMax, matDef.sigmaHMax, matDef.sigmaOpt, matDef.alphaMax, matDef.r_scale, matDef.r_a_scale)
 C_V = CPML_Variables(matDef.kappa_Ex, matDef.kappa_Hy, matDef.psi_Ex, matDef.psi_Hy, matDef.alpha_Ex, matDef.alpha_Hy, matDef.sigma_Ex, matDef.sigma_Hy,matDef.beX, matDef.bmY, matDef.ceX, matDef.cmY, matDef.Ca, matDef.Cb, matDef.Cc, matDef.C1, matDef.C2, matDef.C3, matDef.eLoss_CPML, matDef.mLoss_CPML, matDef.den_Hydz, matDef.den_Exdz )
 
-def results(V, P, C_V, C_P, time_Vec, loopNo = 0, RefCo = False, FFT = False):
+def results(V, P, C_V, C_P, time_Vec, loop = False, RefCo = False, FFT = False, AnalRefCo = False):
     if RefCo == True:
-        transm, sig_fft1, sig_fft2, sample_freq = FourierTrans(P, V, V.x1ColBe, V.x1ColAf, time_Vec, P.delT)
+        #print(V.x1ColBe[100], "BLAHHHHH")
+        #print(V.x1ColAf[100], "BLAHHwwwHHH")
+        transm, sig_fft1, sig_fft2, sample_freq = FourierTrans(V.x1ColBe, V.x1ColAf, time_Vec, P.delT)
         reflectCo = ReflectionCalc(P, V, sample_freq, sig_fft1, sig_fft2)
-    return reflectCo
+        print(reflectCo, "REF")
+        
+        return reflectCo
+    if AnalRefCo==True:
+        analReflectCo = BaseFDTD.AnalyticalReflectionE(V,P)
+        return analReflectCo
 
-def plotter(xAxisData, yAxisData, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = " ", legend = " ", title= " "):
+def plotter(xAxisData, yAxisData1, yAxisData2, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = " ", legend = " ", title= " "):
     fig, ax = plt.subplots()
     ax.clear()
-    ax.plot(xAxisData, yAxisData)
+    ax.plot(xAxisData, yAxisData1)
+    ax.plot(xAxisData, yAxisData2)
     ax.set_ylim(-yAxisLim, yAxisLim)    
     
   
@@ -225,13 +236,14 @@ InputSweepSwitch = {"Input frequency sweep": results,
                 "test function" : results }   
 
 def LoopedSim(V,P,C_V, C_P, stringparamSweep = "Input frequency sweep", loop =False,  Low = 1e9, Interval = 1e8, RefCoBool = True):
-    print("loop = ", loop)
+    #print("loop = ", loop)
     if loop == True:
-        points = 10
+        points = 2
         dataRange = np.arange(Low, points*Interval+Low, Interval) 
+        print(len(dataRange))
         freqDomYAxisRef =np.zeros(points)
         timeDomYAxis = np.zeros(points)       
-       
+        freqDomYAxis2AnalRef= np.zeros(points) 
         if stringparamSweep == "Input frequency sweep":
             for loop in range(points): 
                 matDef.matSetup(V,P, dataRange[loop]) 
@@ -239,16 +251,27 @@ def LoopedSim(V,P,C_V, C_P, stringparamSweep = "Input frequency sweep", loop =Fa
                 t =np.arange(0,len(V.x1ColBe))
                 
                 freqDomYAxisRef[loop] = results(V, P, C_V, C_P, t, loop, True) # One refco y point
-                print(freqDomYAxisRef) 
-        plotter(dataRange, freqDomYAxisRef)  
+                freqDomYAxis2AnalRef[loop] =results(V, P, C_V, C_P, t, loop, AnalRefCo = True)
+                #print(freqDomYAxisRef)
+                #print(freqDomYAxis2AnalRef)
+                #print(len(freqDomYAxisRef), len(freqDomYAxis2AnalRef), "Y STUFF")
+        plotter(dataRange, yAxisData1 =freqDomYAxisRef, yAxisData2 =freqDomYAxis2AnalRef)  
         
     elif loop == False:
-        matDef.matSetup(V,P, newFreq_in= 7.5e8)
+        freqDomYAxisRef =[]
+        freqDomYAxis2AnalRef= []
+        matDef.matSetup(V,P, newFreq_in = Low)
         V, P, C_V, C_P= Controller(V, P, C_V, C_P)
         xAxis = np.zeros(P.Nz+1)
         for i in range(0, P.Nz):
             xAxis[i] = i
+        t =np.arange(0,len(V.x1ColBe))
+                
+        freqDomYAxisRef = results(V, P, C_V, C_P, t, loop, True)
+        freqDomYAxis2AnalRef = results(V, P, C_V, C_P, t, loop, AnalRefCo = True)
         #plotter(xAxis, V.Ex_History[20], yAxisLim =2)  
+        print(freqDomYAxisRef, "measured")
+        print(freqDomYAxis2AnalRef, "analytical")
         VideoMaker(P, V)
         
     return V, P, C_V, C_P
@@ -256,7 +279,7 @@ def LoopedSim(V,P,C_V, C_P, stringparamSweep = "Input frequency sweep", loop =Fa
 
 
 
-V, P, C_V, C_P = LoopedSim(V,P,C_V, C_P, loop = False)
+V, P, C_V, C_P = LoopedSim(V,P,C_V, C_P, loop = False, Low =7.5e8 )
 
 
 

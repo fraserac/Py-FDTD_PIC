@@ -48,7 +48,7 @@ nonInt =  False
 
 Nz = domainSize +2*dimen*pmlWidth   #Grid size
 minRange = 1000
-maxRange = 1001
+maxRange = 2001
 for N in range(minRange,maxRange):
     check = (freq_in*N)/(1/delT)
     #print(check)
@@ -70,7 +70,7 @@ if(nonInt == True):
         
     timeSteps = N        
     
-print('timesteps: ', timeSteps)
+#print('timesteps: ', timeSteps)
 
 if(timeSteps >= 10000):
     print('timeSteps too large')
@@ -78,7 +78,7 @@ if(timeSteps >= 10000):
 t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
 
 nzsrcFromPml = int(lamMin/dz)+1
-print(nzsrcFromPml, domainSize)
+#print(nzsrcFromPml, domainSize)
 if nzsrcFromPml >= 0.75*domainSize:
     print(nzsrcFromPml, 'src is too far into domain')
     sys.exit()
@@ -94,7 +94,7 @@ MaterialFrontEdge = MaterialDistFromPml + pmlWidth + domainSize/8  # Discrete ti
 MaterialWidth = Nz - MaterialFrontEdge - domainSize/6
 MaterialRearEdge = MaterialFrontEdge + MaterialWidth
 x1Loc = nzsrc+int((MaterialFrontEdge-nzsrc)/2)
-x2Loc = nzsrc - (nzsrcFromPml-x2LocBehindSrc)
+x2Loc = nzsrc - (nzsrcFromPml-x2LocBehindSrc) +domainSize/6
 eLoss =0   # sigma e* delT/2*epsilon
 mLoss = 0
 eSelfCo = (1-eLoss)/(1+eLoss)#
@@ -189,7 +189,7 @@ def matSetup(V,P, newFreq_in = freq_in):
     P.muIm = 0
     P.freq_in = newFreq_in
     P.lamMin = (P.c0/P.freq_in)*10
-    print("LamMin ", P.lamMin)
+    #print("LamMin ", P.lamMin)
     P.Nlam = 400#np.floor(20*np.sqrt(P.epsRe*P.muRe))
     P.dz =P.lamMin/P.Nlam  
     P.courantNo = 1   # LOOK INTO 2D VERSION
@@ -199,7 +199,7 @@ def matSetup(V,P, newFreq_in = freq_in):
     P.period = 1/P.freq_in
 
     P.pmlWidth =150 +int(30*P.freq_in/(1e10))
-    print('pmlWidth = ' , P.pmlWidth)
+    #print('pmlWidth = ' , P.pmlWidth)
     if (P.pmlWidth >= 500):
         print('pmlWidth too big', P.pmlWidth)
         sys.exit()
@@ -210,7 +210,7 @@ def matSetup(V,P, newFreq_in = freq_in):
 
     P.Nz = domainSize +2*dimen*pmlWidth   #Grid size
     minRange = 1000
-    maxRange = 1001
+    maxRange = 2001
     for N in range(minRange,maxRange):
         check = (P.freq_in*N)/(1/P.delT)
         #print(check)
@@ -232,7 +232,8 @@ def matSetup(V,P, newFreq_in = freq_in):
         
     P.timeSteps = N        
     
-    print('timesteps: ', P.timeSteps)
+    
+    #print('timesteps: ', P.timeSteps)
     
     if(P.timeSteps >= 10000):
         print('timeSteps too large')

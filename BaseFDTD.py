@@ -93,11 +93,11 @@ def SmoothTurnOn(V,P):
         if(V.Exs[timer] <0 and phase1 == False):
              p1Ind = timer 
              phase1 = True
-             print(p1Ind, "p1Ind")
+             #print(p1Ind, "p1Ind")
         if(V.Exs[timer] >0 and phase1 == True and phase2 == False):
             p2Ind = timer 
             phase2 =True
-            print(p2Ind, "p2Ind")
+            #print(p2Ind, "p2Ind")
         if(phase2 == True) and phase1 == True:
             V.Exs[timer] = 0.0
             V.Hys[timer] =0.0
@@ -391,7 +391,7 @@ def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
 
 def ADE_HyUpdate(V, P, C_V, C_P):
     for nz in range(1, P.Nz-1):
-        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]#*C_V.den_Hydz[nz]
     return V.Hy
         
 def ADE_MyUpdate():
@@ -400,15 +400,12 @@ def ADE_MyUpdate():
 
 def ADE_ExUpdate(V, P, C_V, C_P): 
     for nz in range(1, int(P.materialFrontEdge-1)):
-        V.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]
+        V.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]#*C_V.den_Exdz[nz]
         
     if P.materialRearEdge < P.Nz-1:
         for nzz in range(int(P.materialRearEdge-1), P.Nz):
-            V.Ex[nzz] = V.UpExSelf[nzz]*V.Ex[nzz] + (V.Hy[nzz]-V.Hy[nzz-1])*V.UpExMat[nzz]
+            V.Ex[nzz] = V.UpExSelf[nzz]*V.Ex[nzz] + (V.Hy[nzz]-V.Hy[nzz-1])*V.UpExMat[nzz]#*C_V.den_Exdz[nz]
     return V.Ex
-
-
-
 
 def ADE_ExCreate(V, P, C_V, C_P):
     for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
@@ -427,6 +424,33 @@ def ADE_NonLinMyUpdate():
 
 def ADE_NonLinPxUpdate():
     pass
+
+def AnalyticalReflectionE(V, P):
+    epsNum = 1+((V.plasmaFreqE)**2)
+    epsDom = (V.omega_0E**2-2*np.pi*P.freq_in**2 + 1j*V.gammaE*2*np.pi*P.freq_in)
+    eps0 = P.permit_0   
+    epsilon = (epsNum/epsDom)
+    reflection = (np.sqrt(eps0*epsilon) - np.sqrt(eps0))/(np.sqrt(eps0*epsilon) + np.sqrt(eps0))
+    trans = 2*np.sqrt(epsilon*eps0)/(np.sqrt(eps0*epsilon) + np.sqrt(eps0))
+    trans1 =abs(trans)/(abs(trans)+abs(reflection))
+    reflection1 = abs(reflection)/(abs(trans)+abs(reflection))
+   # print(trans1)
+    #print(reflection1)
+    #print(epsilon)
+    #print(epsNum)
+    #print(epsDom)
+    #print(trans1+reflection1)
+    return reflection1
+
+"""
+pseudocode for ade cpml.
+
+auxiliary var -polarisationCurr, 
+
+Update  equation for polCurr has to create polcurr too, 
+added in psi 
+
+"""
 
 def SpatialFiltering():
     
