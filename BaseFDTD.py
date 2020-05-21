@@ -6,11 +6,6 @@ This script is the engine that will calculate field updates and plotting functio
 The plotting and animation functionality may eventually be moved to a separate script.
 This script will eventually just contain the update equations and animation
 
-import scipy as sci
-import math
-from Material_Def import *
-
-#from MasterController import *
 """
 
 import numpy as np
@@ -23,6 +18,11 @@ import sys
 from decimal import *
 import itertools as it
 from scipy import signal as sign
+import cython 
+import numba as num 
+
+
+
 
 def sourceGen(T):
     pulse = np.exp(-(T - 30)*(T-30)/100)
@@ -75,13 +75,32 @@ def FieldInit(V,P):
     V.Dx = np.zeros(P.Nz+1)
     V.tempVarPol = np.zeros(P.Nz+1)
     V.tempTempVarPol = np.zeros(P.Nz+1)
+    V.tempVarE = np.zeros(P.Nz+1)
+    V.tempTempVarE = np.zeros(P.Nz+1)
     
-    return V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys
+    return V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Ex_History, V.Hy, V.Hy_History, V.Psi_Ex_History, V.Psi_Hy_History, V.Exs, V.Hys
 
-
+def SmoothTurnOn(V,P):
+    ppw =  P.c0 /(P.freq_in*P.dz)
+    for timer in range(P.timeSteps):
+        if(timer*P.delT < P.period):
+            V.Exs.append(float(Decimal(np.sin(2.0*np.pi/ppw*(P.courantNo*timer)))))
+            V.Hys.append(float(Decimal(np.sin(2.0*np.pi/ppw*(P.courantNo*(timer+1))))))
+        elif(timer*P.delT >= P.period):  
+            V.Exs.append(0)
+            V.Hys.append(0)
+    for boo in range(P.timeSteps):
+        if(V.Hys[boo] ==0):
+          V.Hys[boo-1] =0
+        #if(V.Exs[boo] ==0):
+         # V.Exs[boo-1] =0
+          break    
+    return V.Exs, V.Hys   
+"""
 def SmoothTurnOn(V,P):
     V.Exs = np.zeros(P.timeSteps)
     V.Hys = np.zeros(P.timeSteps)
+    print("SMOOTH")
     ppw =  P.c0 /(P.freq_in*P.dz)
     phase1 = False
     phase2 = False
@@ -90,6 +109,7 @@ def SmoothTurnOn(V,P):
     for timer in range(P.timeSteps):
         V.Exs[timer] = (np.sin(2.0*np.pi/ppw*(P.courantNo*timer)))
         V.Hys[timer] = (np.sin(2.0*np.pi/ppw*(P.courantNo*(timer+1))))
+        #print("SMOOTH COUNT" , timer)
         if(V.Exs[timer] <0 and phase1 == False):
              p1Ind = timer 
              phase1 = True
@@ -104,7 +124,10 @@ def SmoothTurnOn(V,P):
         if(V.Hys[p2Ind] != 0 and phase2== True):
             V.Hys[p2Ind] = 0.0;
     return V.Exs, V.Hys   
-
+        #if(V.Hys[p2Ind] != 0 and phase2== True):
+           
+  """          
+    
 
 def EmptySpaceCalc(V,P): 
     V.UpHyMat = np.zeros(P.Nz+1) 
@@ -371,10 +394,11 @@ def CPML_PMC(V,P,C_V, C_P):
 def ADE_TempPolCurr(V,P):
      for nz in range(1, P.Nz-1):
          V.tempTempVarPol[nz] = V.tempVarPol[nz]
-         V.tempVarPol[nz] = V.polarisationCurr[nz]  
-     return V.tempTempVarPol, V.tempVarPol
-
-
+         V.tempVarPol[nz] = V.polarisationCurr[nz] 
+         V.tempTempVarE[nz] = V.tempVarE[nz] 
+         V.tempVarE[nz] = V.Ex[nz] 
+     return V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE
+#@num.jit 
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
     D= (1/P.delT**2)+(V.gammaE/(2*P.delT))
     #print("D ", D)
@@ -386,22 +410,30 @@ def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
     #print(C)
   
     for nz in range (int(P.materialFrontEdge-1), int(P.materialRearEdge)):
-        V.polarisationCurr[nz] = A*V.tempVarPol[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]
+        V.polarisationCurr[nz] = (A*V.tempVarPol[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz])
+        if(np.isnan(V.polarisationCurr[nz]) or V.polarisationCurr[nz] > 1e-6 ):
+                 print("POL CURR IS wrong", V.polarisationCurr[nz])
+                 sys.exit()
     return V.polarisationCurr
-
+#@num.jit
 def ADE_HyUpdate(V, P, C_V, C_P):
     for nz in range(1, P.Nz-1):
         V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+        if(np.isnan(V.Hy[nz]) or V.Hy[nz] > 10):
+             print("Hy IS wrong", V.Hy[nz])
+             sys.exit()#*C_V.den_Hydz[nz]
     return V.Hy
         
 def ADE_MyUpdate():
     
     pass
-
+#@num.jit
 def ADE_ExUpdate(V, P, C_V, C_P): 
     for nz in range(1, int(P.materialFrontEdge-1)):
         V.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]
-        
+        if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
+             print("Ex IS wrong", V.Ex[nz])
+             sys.exit()
     if P.materialRearEdge < P.Nz-1:
         for nzz in range(int(P.materialRearEdge-1), P.Nz):
             V.Ex[nzz] = V.UpExSelf[nzz]*V.Ex[nzz] + (V.Hy[nzz]-V.Hy[nzz-1])*V.UpExMat[nzz]
@@ -409,17 +441,103 @@ def ADE_ExUpdate(V, P, C_V, C_P):
 
 
 
-
+#@num.jit
 def ADE_ExCreate(V, P, C_V, C_P):
     for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
        V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
+       if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
+             print("Ex IS wrong create", V.Ex[nz])
+             sys.exit()
+    return V.Ex
+
+#@num.jit
+def ADE_DxUpdate(V, P, C_V, C_P):
+    for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
+        V.Dx[nz] = V.Dx[nz] +(V.Hy[nz] - V.Hy[nz-1])*P.delT/(P.dz)
+        #V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
+        #if abs(V.Dx[nz]) >0 :
+         #   print("Dx", V.Dx[nz])
+    return V.Dx
+"""
+
+def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):#MTM METAMATERIALS
+    D= (1/P.delT**2)+(V.gammaE/(2*P.delT))
+    #print("D ", D)
+    A = ((2/P.delT**2)-V.gammaE**2)/D
+    #print("A", A)
+    B = ((V.gammaE/(2*P.delT))-1/P.delT**2)/D
+    #print(B)
+    C =(P.permit_0*V.gammaE**2)/D
+    #print(C)
+    
+    denomPol = 2*V.gammaE*P.delT+ P.delT**2*V.omega_0E**2+2
+    for
+    numPol = 2*V.Ex[nz]*P.permit_0*P.delT*V.plasmaFreqE**2+2*V.polarisationCurr[nz]*V.gammaE*P.delT+4*V.polarisationCurr[nz]-2*V.tempVarPol[nz]-2*V.tempVarE[nz]*P.permit_0*P.delT*V.plasmaFreqE**2 -V.polarisationCurr[nz]*P.delT**2*V.omega_0E**2
+    
+    
+   # denomPol = 2*V.gammaE*P.delT+ P.delT**2*V.omega_0E**2+2
+   # print(denomPol)
+    #numPol = np.zeros(P.Nz+1)
+    
+    for nz in range (int(P.materialFrontEdge-1), int(P.materialRearEdge)):
+         #numPol[nz] = 2*V.Ex[nz]*P.permit_0*P.delT*V.plasmaFreqE**2+2*V.polarisationCurr[nz]*V.gammaE*P.delT+4*V.polarisationCurr[nz]-2*V.tempTempVarPol[nz]-2*V.tempTempVarE[nz]*P.permit_0*P.delT*V.plasmaFreqE**2 -V.polarisationCurr[nz]*P.delT**2*V.omega_0E**2
+        # V.polarisationCurr[nz] =numPol[nz]/denomPol 
+          #print(V.polarisationCurr[nz])
+         
+        
+         V.polarisationCurr[nz] = A*V.tempVarPol[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]
+         V.polarisationCurr[nz] =P.dz*(V.polarisationCurr[nz]+V.tempTempVarPol[nz])/2
+         if(np.isnan(V.polarisationCurr[nz]) or V.polarisationCurr[nz] > 1000 ):
+             print("POL CURR IS wrong", V.polarisationCurr[nz])
+             sys.exit()
+         #V.polarisationCurr[nz] = 
+    # print(numPol[P.materialFrontEdge + 8], "numpol")
+    return V.polarisationCurr
+
+def ADE_HyUpdate(V, P, C_V, C_P, counts):
+    for nz in range(1, P.Nz-1):
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+        if(np.isnan(V.Hy[nz]) or V.Hy[nz] > 1000):
+             print("Hy IS wrong", V.Hy[nz], nz, counts)
+             sys.exit()#*C_V.den_Hydz[nz]
+    return V.Hy
+        
+def ADE_MyUpdate():
+    
+    pass
+
+def ADE_ExUpdate(V, P, C_V, C_P, counts): 
+    for nz in range(1, P.Nz-1):
+        V.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]#C_V.den_Exdz[nz]#*C_V.den_Exdz[nz]
+        if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 1000):
+             print("Ex IS wrong", V.Ex[nz], nz, counts)
+             sys.exit()
+    if P.materialRearEdge < P.Nz-1:
+        for nzz in range(int(P.materialRearEdge-1), P.Nz):
+            V.Ex[nzz] = V.UpExSelf[nzz]*V.Ex[nzz] + (V.Hy[nzz]-V.Hy[nzz-1])*V.UpExMat[nzz]#*C_V.den_Exdz[nz]
+            if(np.isnan(V.Ex[nzz]) or V.Ex[nzz] > 1000):
+             print("Ex IS wrong after material", V.Ex[nzz])
+             sys.exit()
+    return V.Ex
+
+def ADE_ExCreate(V, P, C_V, C_P):
+    for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
+        V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
+        if(abs(V.Dx[nz]) > 0.0 or abs(V.polarisationCurr[nz] > 0.0)):
+            print(V.Dx[nz], "DX", V.polarisationCurr[nz], "pol")
+        if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 1000):
+             print("Ex IS wrong in create", V.Ex[nz])
     return V.Ex
 
 def ADE_DxUpdate(V, P, C_V, C_P):
     for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
-        V.Dx[nz] = V.Dx[nz] +(V.Hy[nz] - V.Hy[nz-1])*P.delT/P.dz
-        V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
-    return V.Dx, V.Ex
+        V.Dx[nz] = V.Dx[nz]*P.dz +(V.Hy[nz] - V.Hy[nz-1])*V.UpExMat[nz]*(P.delT/P.dz)####  co-efficient?uphymat
+        if(np.isnan(V.Dx[nz]) or V.Dx[nz] > 1000):
+             print("Dx IS wrong", V.Dx[nz])
+        if(abs(V.Dx[nz]) > 0 ):
+            print("Dx ", V.Dx[nz])
+        #V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0 
+    return V.Dx
 
 
 def ADE_NonLinMyUpdate():
@@ -427,6 +545,27 @@ def ADE_NonLinMyUpdate():
 
 def ADE_NonLinPxUpdate():
     pass
+"""
+def AnalyticalReflectionE(V, P):
+    epsNum = 1+((V.plasmaFreqE)**2)
+    epsDom = (V.omega_0E**2-(2*np.pi*P.freq_in**2) + 1j*V.gammaE*2*np.pi*P.freq_in)
+    eps0 = P.permit_0   
+    epsilon = 1+(epsNum/epsDom)
+    reflection = (np.sqrt(eps0*epsilon) - np.sqrt(eps0))/(np.sqrt(eps0*epsilon) + np.sqrt(eps0))
+    trans = 2*np.sqrt(epsilon*eps0)/(np.sqrt(eps0*epsilon) + np.sqrt(eps0))
+    trans1 =abs((trans)/(trans+reflection))
+    reflection1 = abs((reflection)/(trans+reflection))
+   # print(trans1)
+    #print(reflection1)
+    #print(epsilon)
+    #print(epsNum)
+    #print(epsDom)
+    #print(trans1+reflection1)
+    return reflection1
+
+
+
+
 
 def SpatialFiltering():
     
