@@ -18,7 +18,7 @@ import math as ma
 
 
 
-def matSetup(V,P, C_P, C_V, newFreq_in, domainSize, minim=400, maxim=800):# domain size and freq 
+def envSetup(newFreq_in, domainSize, minim=400, maxim=800):# domain size and freq 
    # P.epsRe =1
     #P.epsIm = 0
     #P.muRe = 1
@@ -46,30 +46,29 @@ def matSetup(V,P, C_P, C_V, newFreq_in, domainSize, minim=400, maxim=800):# doma
     if (pmlWidth >= 500):
         print('pmlWidth too big', pmlWidth)
         sys.exit()
-    domainSize =600# +int(5*P.freq_in)
+    # +int(5*P.freq_in)
     print(domainSize, 'domainSize')
     dimen =1
     nonInt =  False
 
     Nz = domainSize +2*dimen*pmlWidth   #Grid size
-    minRange = minim
-    maxRange = maxim
-    for N in range(minRange,maxRange):
+
+    for N in range(minim,maxim):
         #print("OOOOOOGA!", P.freq_in, N, P.delT)
         check = (freq_in*N)/(1/delT)
         #print(check)
         if int(check)-check ==0:
             timeSteps = N 
             break
-        elif N == maxRange-1:
+        elif N == maxim-1:
            print('Could not find timestep that allowed freq_in to fall on an integer frequency bin index with range provided.') 
            #sys.exit()
            nonInt = True
            
        
     if(nonInt == True):       
-        checkNear = (freq_in*minRange)/(1/delT)
-        for N in range(minRange, maxRange):
+        checkNear = (freq_in*minim)/(1/delT)
+        for N in range(minim, maxim):
             dummyCheck = (freq_in*N)/(1/delT)
             if (int(dummyCheck)-dummyCheck  < int(checkNear)-checkNear): # is closer to freq bin 
                 #print(checkNear, dummyCheck, "checkNear, dummyCheck")
