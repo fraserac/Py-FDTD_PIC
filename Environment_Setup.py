@@ -13,8 +13,6 @@ import numpy as np
 import scipy.constants as sci
 import sys
 import math as ma
-#from MasterController import *
-
 
 
 
@@ -24,17 +22,17 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     #P.muRe = 1
     #P.muIm = 0
     freq_in = newFreq_in
-    print(freq_in, "freq")
+    #print(freq_in, "freq")
     c0 = 299792458.0
     lamMin = (c0/freq_in)
     
     #print("LamMin ", P.lamMin)
-    Nlam = 600#np.floor(20*np.sqrt(P.epsRe*P.muRe))
+    Nlam =30
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = 0.5*(dz/c0)#0.95/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)#0.95/(P.c0*np.sqrt(1/(P.dz**2)))
    # decimalPlaces =11
-   # multiplier = 10 ** decimalPlaces
+   # multiplier = 10 **decimalPlaces
     #P.delT = ma.floor(P.delT* multiplier) / multiplier
     #CharImp =np.sqrt(sci.mu_0)/np.sqrt(sci.epsilon_0)
     period = 1/freq_in
@@ -42,9 +40,9 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     if courantNo > 1.01 or courantNo <0:
         print(courantNo, "courantNo is unstable")
         sys.exit()
-    pmlWidth = 10*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
+    pmlWidth = 3*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
     #print('pmlWidth = ' , P.pmlWidth)
-    if (pmlWidth >= 15000):
+    if (pmlWidth >= 12000):
         print('pmlWidth too big', pmlWidth)
         sys.exit()
     # +int(5*P.freq_in)
@@ -73,7 +71,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
            #sys.exit()
            nonInt = True
            
-           print("hereeee")
+          # print("hereeee")
        
     if(nonInt == True):       
         checkNear = (freq_in*minim)/(1/delT)
@@ -101,8 +99,8 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         sys.exit()
     t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
     
-    nzsrcFromPml = 2*int(lamMin/dz)
-    if nzsrcFromPml >= domainSize/2:
+    nzsrcFromPml = 6*int(lamMin/dz)
+    if nzsrcFromPml >= domainSize*0.65:
         print(nzsrcFromPml, 'src is too far into domain')
         sys.exit()
         
@@ -114,7 +112,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 3*int(lamMin/dz)
+    MaterialDistFromPml = 10*int(lamMin/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1
@@ -129,8 +127,8 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     if materialFrontEdge <= nzsrc:
         print("Source is inside material")
         sys.exit()
-    x1Loc = materialFrontEdge +100
-    x2Loc =pmlWidth + 100
+    x1Loc = materialFrontEdge-10
+    x2Loc = nzsrc -10
     
     eLoss =0   # sigma e* delT/2*epsilon
     mLoss = 0
@@ -139,5 +137,5 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     hSelfCo = (1-mLoss)/(1+mLoss)
     hEcompsCo = 1/(1+mLoss)
     
-    return Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period 
+    return Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam 
    

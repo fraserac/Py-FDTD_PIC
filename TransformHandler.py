@@ -31,6 +31,7 @@ import sys
 from numba import njit as nj
 
 def FourierTrans(P,V, itemForTransf1, time_vec, delT):
+  
     powers=0.0
     
     iii=0
@@ -171,12 +172,16 @@ def ReflectionCalc(P, V, sample_freq, sig_fft, sig_fft2):
     freqIndex =np.argmax(sig_fft)
     
     freqIndex2= np.argmax(sig_fft2)
-    
-    print("FREQ INDICES ",freqIndex, freqIndex2)
+   
+    #print("FREQ INDICES ",freqIndex, freqIndex2)
     if int(freqIndex)-freqIndex !=0:
         freqIndex = int(freqIndex)
-    reflectionCo = abs(sig_fft2[freqIndex]/sig_fft[freqIndex])
-    print(sig_fft2[freqIndex])
+    reflectionCo = abs(sig_fft2[freqIndex]/(sig_fft[freqIndex]))
+    if np.isnan(reflectionCo):
+        print("NAN REFLECTION, timeSteps might not be big enough.", reflectionCo)
+        sys.exit()
+   # breakpoint()
+    #print(sig_fft2[freqIndex])
    
     
     #print("SIG!!!!", abs(sig_fft2[int(freqIndex)]), abs(sig_fft1[int(freqIndex)]))
@@ -192,18 +197,16 @@ def genFourierTrans(V,P, C_V, C_P, Tddata):
     Time vector, data to transform, frequency x axis
     
     """
-    Td = np.zeros(P.timeSteps)
+    Td = Tddata
     FDdata = np.zeros(P.timeSteps)
     FDVec = np.zeros(P.timeSteps)   
-    FDdata = fft(Td)
-   #FDXaxis = fftfreq(len(FDdata), d= P.delT)
-    FDVec = np.asmatrix(FDdata).flatten()
+    FDdata = fftpack.fft(Td)
     
-    if FDVec.ndim >2:
-        print("Wrong dimension FDVec genFourierTrans from MC", FDVec.ndim)
-        sys.exit()
+    FDXaxis = fftpack.fftfreq(len(FDdata), d= P.delT)
+        
+    
   
-    return FDVec
+    return FDdata, FDXaxis
 
 
 #

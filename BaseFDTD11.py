@@ -9,24 +9,10 @@ This script will eventually just contain the update equations and animation
 """
 
 import numpy as np
-
-import math
-
 import matplotlib.pylab as plt
-import matplotlib.animation as animation
-#from Material_Def import *
 from scipy import signal as sign
 import sys 
-
-#from decimal import *
-import itertools as it
-from scipy import signal as sign
-
 from numba import njit as nj
-
-from numba import jit 
-
-
 
 
 def sourceGen(T):
@@ -49,7 +35,7 @@ def FieldInit(V,P):
             if P.timeSteps > 2**14:
                 raise ValueError('timeSteps max too large')
                 break
-            if P.Nz > 30000:
+            if P.Nz > 25000:
                 raise ValueError('Grid size too big')
                 break
             if P.Nz ==0:
@@ -490,7 +476,7 @@ def ADE_ExUpdate(V, P, C_V, C_P):
     return V.Ex
 
 
-
+ 
 @nj
 def ADE_ExCreate(V, P, C_V, C_P):
     for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
@@ -515,12 +501,16 @@ def AnalyticalReflectionE(V, P):
     epsNum = ((V.plasmaFreqE)**2)
     epsDom = (V.omega_0E**2-(2*np.pi*P.freq_in**2) - 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
-    epsilon = 1+(epsNum/epsDom)
-    reflection = (np.sqrt(eps0*epsilon) - np.sqrt(eps0))/(np.sqrt(eps0*epsilon) + np.sqrt(eps0))
-    trans = 2*np.sqrt(epsilon*eps0)/(np.sqrt(eps0*epsilon) + np.sqrt(eps0))
-    trans1 =abs((trans)/(trans+reflection))
-    reflection1 = abs((reflection)/(trans+reflection))
-    realV = P.c0/(np.sqrt(np.real(epsilon)))
+    epsilon = 1 + epsNum/epsDom
+    mu =1
+    imp1 = 1
+    imp2 = np.sqrt(mu/np.real(epsilon)+0j)
+    trans = (2*imp2)/(imp1+imp2)
+    #print(abs(trans), "transmission")
+    reflection = (imp2-imp1)/(imp1+imp2)
+    #print(abs(reflection), "reflection analytical")
+    #print(abs(trans)+abs(reflection), "sum of trans and reflection")
+    realV = P.c0/(np.sqrt(abs(np.real(epsilon))))
     dispPhaseVelNum = (((2*np.pi*P.freq_in)*P.dz)/2)
     dispPhaseVelDenArg= ((P.dz)/(realV*P.delT))*np.sin((2*np.pi*P.freq_in*P.delT)/2)
     dispPhaseVel = dispPhaseVelNum/np.arcsin(dispPhaseVelDenArg)
@@ -530,7 +520,10 @@ def AnalyticalReflectionE(V, P):
     #print(epsNum)
     #print(epsDom)
     #print(trans1+reflection1)
-    return reflection1, dispPhaseVel, realV
+    
+   
+    
+    return reflection, dispPhaseVel, realV
 
 
 

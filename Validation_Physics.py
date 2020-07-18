@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+
 """
 Validation_Physics
 
@@ -17,7 +17,7 @@ import matplotlib.pylab as plt
 
 def VideoMaker(P,V):
     fig, ax = plt.subplots()
-    interval =25
+    interval =20
     my_path = os.getcwd() 
     newDir = "Ex fields"
     
