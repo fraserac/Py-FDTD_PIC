@@ -71,10 +71,6 @@ def FieldInit(V,P):
     
     return V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy
 
-def simpleTest():
-    print("simple")
-    return 53
-
 def SmoothTurnOn(V,P):
     ppw =  P.c0 /(P.freq_in*P.dz)
     Exs =[]
@@ -86,12 +82,10 @@ def SmoothTurnOn(V,P):
         elif(timer*P.delT >= P.period):  
             Exs.append(0)
             Hys.append(0)
-   # for boo in range(P.timeSteps):
-    #    if(abs(Hys[boo]) > 0 and abs(Exs[boo]) == 0 ):
-     #       Hys[boo-1] =0
-        
-        
-      #      break    
+    for boo in range(P.timeSteps):
+        if(abs(Hys[boo]) > 0 and abs(Exs[boo]) == 0 ):
+            Hys[boo-1] =0
+            break    
     return Exs, Hys   
     
 

@@ -9,6 +9,9 @@ import numpy as np
 import time 
 from numba import njit as nj
 from scipy import sparse
+import BaseFDTD11 as BF
+import sys
+
 
 def initMat(V,P, C_V, C_P):
     blocks =2
@@ -35,84 +38,236 @@ def coEfFinder(V, P, C_V, C_P):
 
 
 
-def ABuild(A, P, selfCoEFHy, selfCoEfEx, curlinExCoEf, curlinHyCoef, blocks=2):  # VERY SPARSE UPDATE MATRIX OVER ALL SPACE
-    dRange = P.Nz-1
-    A = A.todense()
-    
-    for j in range(0, dRange-1): #HY BLOCK OVER SPACE
-         A[j, 1+j]=selfCoEFHy # hyself[nz]
-    for j in range(0, dRange-1):
-                A[j, j +dRange+1] = -80
-                A[j, j+2 +dRange] = +40 #spatial curl operator [nz] CHECK
-    """
-    #E block over space
-    for j in range(0, dRange-3):
-        A[j + dRange, j+1 +dRange] = selfCoEfEx # SelfExCo[nz]        
-        A[j + dRange, j +1] = -2000*curlinExCoEf[j] #spatial curl Hy, nz
-        A[j +dRange, j +2]= curlinExCoEf[j]       
-    """
-    A = sparse.csc_matrix(A)
+def ABuild(A, P, De, Dh, K, Kt, blocks=2):  # VERY SPARSE UPDATE MATRIX OVER ALL SPACE
+    print("Building A matrix...")
+    A1 = np.identity(P.Nz+1)
+    A1 = sparse.csc_matrix(A1)
+    A2 = -1*np.linalg.inv(De)*K*P.delT
+    A2 = sparse.csc_matrix(A2)
+    A3 = np.linalg.inv(Dh)*Kt*np.identity(P.Nz+1)*P.delT   # with conductivities there will not be as many I
+    A3 = sparse.csc_matrix(A3)
+    A4 = np.identity(P.Nz+1)*np.linalg.inv(Dh)*Kt*np.linalg.inv(De)*K*P.delT**2
+    A4 = sparse.csc_matrix(A4)   
+    A = sparse.bmat([[A1, A2], [A3, A4]])
+
     return A, blocks
 
-
-def InitMatCalc(A, blocks, source, V, P, C_V, C_P):
-    dum = np.zeros((blocks*(P.Nz), 1))
-    dum = sparse.csc_matrix(dum)
-    source = sparse.csc_matrix(source)
-   # A = sparse.csc_matrix(A)
-   # breakpoint()
+def RandFBuild(P, De, Dh, K, Kt):   # MOR method outlined by Bart Denecker
+    
+    R1 = (1/(P.delT*P.c0))*De
+    R1 = sparse.csc_matrix(R1)
+    R2 = -0.5*K
+    R2 = sparse.csc_matrix(R2)
+    R3 = -0.5*Kt
+    R3 = sparse.csc_matrix(R3)
+    R4 = (1/(P.delT*P.c0))*Dh
+    R4 = sparse.csc_matrix(R4)
+    
+    F1 = np.zeros((P.Nz+1, P.Nz+1))
+    F1 =sparse.csc_matrix(F1)
+    F2 = 0.5*K
+    F2 = sparse.csc_matrix(F2)
+    F3 = R3
+    F4 = F1
+    
+    R = sparse.bmat([[R1, R2],[R3, R4]])
+    F = sparse.bmat([[F1, F2],[F3, F4]])
     
     
-    #B = sparse.csc_matrix(B)
-    
-    
-    return A
-    
-def MatCalcIter(A, B, source):
-    A = A.todense()
-    
-    
-   # breakpoint()
-    Bs = A@B
-    #breakpoint()
-   # B = sparse.csc_matrix(B)
-    source = np.asmatrix(source)
-    Bs = np.array(B) + np.array(source)
-    #Bs =sparse.csc_matrix(B)
-    
-    
-    #B = sparse.csc_matrix(B) ## is this step necessary?
-    return Bs
+    return R, F
 
 
-def TimeIter(A, B, source, V, P, C_V, C_P):
     
-    idSrc = [(P.nzsrc), (P.nzsrc -1+P.Nz)]
+
+def BasisVector(V, P, C_V, C_P):
+    Xn = np.block([V.Ex, V.Hy])
+    Xn = Xn.reshape(len(Xn), 1)
+    return Xn
+
+def BAndSourceVector(V,P, C_V, C_P):
+    B = np.zeros((P.Nz*2+2, P.Nz*2+2))
+    UnP1A = np.ones(P.Nz+1)
+    UnP1B = np.ones(P.Nz+1)
+    B[P.nzsrc, P.nzsrc] = 1
+    B[P.Nz+1+P.nzsrc-1, P.nzsrc-1 +P.Nz+1] =1
     
-    #breakpoint()
+    return UnP1A, UnP1B, B
+"""
+This function builds the blocks for the MOR method update matrix
+Firstly, build bare bones basic from ground up. E,H + source.
+
+
+QUADRANTS: A1 A2
+           A3 A4
+          
+An Explicit and Unconditionally Stable FDTD
+Method for Electromagnetic Analysis
+Md. Gaffar and Dan Jiao
+also Xihao reduction paper
+
+
+Build De, Dh
+
+"""
+def blockBuilder(V, P, C_V, C_P):
+    K =  np.zeros((P.Nz+1, P.Nz+1))
+    DiagE = np.ones(P.Nz+1)
+    DiagH = np.ones(P.Nz+1)
+    De = np.diag(DiagE)
+    Dh = np.diag(DiagH)
+    for j in range(1, P.Nz):
+                K[j, j] = -1/P.dz
+                K[j, j-1] = 1/P.dz
+    Kt = K.T
+    return De, Dh, K, Kt
+
+
+    
+def TimeIter(A, B, UnP1A, UnP1B, Xn, V, P, C_V, C_P):
+    Exs, Hys = BF.SmoothTurnOn(V,P)
+    print("MOR Time stepping...")
+   
     for jj in range(P.timeSteps):
-        #source =  source.toarray()
+        print("Timestepping, step number: ", jj)
+        UnP1A, UnP1B, B = BAndSourceVector(V, P, C_V, C_P)
+        UnP1A[P.nzsrc] = Hys[jj]/P.CharImp
+        UnP1B[P.nzsrc-1] = -Exs[jj]
+        UnP1 = np.block([UnP1A, UnP1B])
+        UnP1 = sparse.csc_matrix(UnP1)
+        B = sparse.csc_matrix(B)
+        Xn = sparse.csc_matrix(Xn)
+        XnP1 = np.zeros(2*P.Nz+2)
+        XnP1 = sparse.csc_matrix(XnP1)
+        if jj == 0:
+            XnP1 = A@Xn.T
+            XnP1 += B@UnP1.T
+        elif jj >0:
+            XnP1 = A@XnP1.T 
+            XnP1 += B@UnP1.T
         
-        source[P.nzsrc] = np.exp(-(jj - 30)*(jj-30)/100)
-        source[P.nzsrc-1+ P.Nz] = -np.exp(-(jj - 30)*(jj-30)/100)*(1/377)
-        #source = sparse.csc_matrix(source)
-       # breakpoint()
-        top = int(P.Nz+1)
-        B = MatCalcIter(A, B, source) 
-        B = B.flatten()
+        XnP1 = XnP1.todense()    
+        for ii in range(len(V.Ex)):
+            V.Ex[ii] = XnP1[ii]
+            V.Hy[ii] = XnP1[ii+len(V.Ex)]
+        V.Ex_History[jj] = V.Ex
+        
+        Xn = XnP1
+        
+    return B, V.Ex, V.Ex_History, V.Hy, UnP1, Xn
+
+
+
+
+def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P):
+    Exs, Hys = BF.SmoothTurnOn(V,P)
+   # breakpoint()
+    print("MOR Time stepping...")
+    if R.shape != (2*P.Nz+2, 2*P.Nz+2):
+        print("R is wrong shape")
+        sys.exit()
+    if F.shape != (2*P.Nz+2, 2*P.Nz+2):
+        print("F is wrong shape")
+        sys.exit()#
+    
+        
+    XnP1 = np.zeros(2*P.Nz+2)
+   
+    XnP1 = XnP1.reshape(len(XnP1), 1)
+    
+    XnP1 =sparse.csc_matrix(XnP1)
+    Xn = sparse.csc_matrix(Xn)
+    R = sparse.csc_matrix(R)
+    F = sparse.csc_matrix(F)
+    for jj in range(0,P.timeSteps):
+        print("Timestepping, step number: ", jj)
+        
+       
+       # y = y.reshape(len(y),1)
+                #XnP1 = sparse.linalg.spsolve((R+F), y)
+        
+        #XnP1 = sparse.csc_matrix(XnP1)
+        UnP1A, UnP1B, B = BAndSourceVector(V, P, C_V, C_P)
+        if B.shape != (2*P.Nz+2, 2*P.Nz+2):
+            print("B is wrong shape")
+            sys.exit()
+       
+        UnP1A = (Hys[jj]*UnP1A*7*P.Nlam)
+        UnP1B = -(Exs[jj]*UnP1B*7*P.Nlam)/P.CharImp
+        UnP1 = np.block([UnP1A, UnP1B])
+        UnP1 = UnP1.reshape(len(UnP1), 1)
+        UnP1 = sparse.csr_matrix(UnP1)
+        B = sparse.csr_matrix(B)
         #breakpoint()
         
+        y = (R-F)@XnP1 +B@UnP1
+        #XnP1 = A@XnP1 + B@UnP1
+        #breakpoint()
         
+        #R= R.todense()
+        #F = F.todense()
+        #XnP1 = XnP1.todense()
+        summer = R+F
+        #y = y.todense()
         
-        V.Ex  =B[0:top]
+        XnP1 = sparse.linalg.spsolve(summer, y )  # outputs NONSPARSE
+        XnP1 = XnP1.reshape(len(XnP1), 1)
+        #XnP1 = sparse.csc_matrix(XnP1)
+        
+        #print(XnP1[np.nonzero(XnP1)], "NONZERO")
+        #breakpoint()
+         
+        #XnP1 = XnP1.reshape(len(XnP1), 1)
+        
+        for ii in range(len(V.Ex)-1):
+            V.Ex[ii] = XnP1[ii]
+            V.Hy[ii] = XnP1[ii+len(V.Ex)]
         V.Ex_History[jj] = V.Ex
-        V.Hy = B[top: 2*(top)]
-       
-    return B, V.Ex, V.Ex_History, V.Hy
+        
+        XnP1 = sparse.csc_matrix(XnP1)
+            
+        #Xn = XnP1
+        
+    return V.Ex, V.Ex_History, V.Hy, UnP1
 
 
 
-  
+
+
+
+
+
+
+def vonNeumannAnalysisMOR(V,P,C_V,C_P, coEfMat):
+    print("VonNeumann Analysis for MOR...")
+    stabilityVals = np.zeros(len(sparse.linalg.eigs(coEfMat,  k = 15, ncv = 60, return_eigenvectors = False)))
+    simpleRoot = False
+    """
+    Eigenvalue pertubation, there are no eigenvalues!
+    """
+    
+    counter = 0
+   
+   # if abs(np.linalg.det(coEfMat)) != 0:    
+    
+    for ii in range(len(sparse.linalg.eigs(coEfMat, which = 'LM', k = 15, ncv = 80, return_eigenvectors = False))):
+        stabilityVals[ii]=(abs(sparse.linalg.eigs(coEfMat, which = 'LM', k = 15, ncv = 80, return_eigenvectors = False)[ii]))
+        
+    for jj in range(len(stabilityVals)):
+        if np.isclose(stabilityVals[jj], 1, rtol = 1e-8):
+            counter +=1
+            
+    if counter > 1:
+        print("simple root present...", stabilityVals)
+        simpleRoot = True
+    if counter ==1:
+        print("single 1 on boundary, unstable", stabilityVals)
+        sys.exit()
+        
+    if np.max(stabilityVals) > 1:
+        if simpleRoot == False:     
+            print("Stability eigenvalues greater than one, von Neumann instability.", stabilityVals)
+            sys.exit()
+      
     
 
 

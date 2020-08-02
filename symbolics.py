@@ -9,11 +9,11 @@ Symbolic stuff
 Co efficients for coupled recursive matrix 
 """
 
-from sympy import symbols as sym,  Array as Arr, Eq, solve, symarray, Matrix as mat, latex
+from sympy import symbols as sym,  Array as Arr, Eq, solve, symarray, Matrix as mat, latex, Poly
 from sympy.matrices.dense import list2numpy
 
 import numpy as np
-from sympy import init_printing, linsolve
+from sympy import init_printing, linsolve, simplify
 from IPython.display import display, Markdown, Latex
 
 
@@ -32,7 +32,7 @@ H[1]' =     H[1]        - E[1] + E[2]
 H[2]' =     H[2]        - E[2] + E[3]
 H[3]' =     H[3]        - E[3] + E[4]
 H[4]' =     H[4]        - E[4] + E[5]
-E[0]' =                 + E[0]
+E[0]' =                 - E[0]
 E[1]' =    -H[0] + H[1]'       + E[1]
 E[2]' =    -H[1] + H[2]'       + E[2]
 E[3]' =    -H[2] + H[3]'       + E[3]    
@@ -104,20 +104,28 @@ def matBuilderSym(Nz, A, blocks =2):
     
     #Hy stamp
     for j in range(1, dRange): #HY BLOCK OVER SPACE
-         A[j, 1+j]= As[j, 1+j] # hyself[nz]
+         A[j, 1+j]= 0.2 # hyself[nz]
     for j in range(1, dRange-2):
-                A[j, j +dRange+1] = -1*As[j, j +dRange+1]
-                A[j, j+2 +dRange] = As[j, j+2 +dRange]
+                A[j, j +dRange+1] = -0.4 # Nz
+                A[j, j+2 +dRange] = 0.4  #Nz+1
                 
-    #E block            
+    #Ex stamp            
     for j in range(1, dRange):
-        A[j + dRange, j+1 +dRange] = As[j + dRange, j+1 +dRange] # SelfExCo[nz]        
-        A[j + dRange, j +1] = -1*As[j + dRange, j +1] #spatial curl Hy, nz
-        A[j +dRange, j +2]= As[j +dRange, j +2] #soln to be subbed    
+        A[j + dRange, j+1 +dRange] = 1 # SelfExCo[nz]        
+        A[j + dRange, j ] = -0.6 #spatial curl Hy, nz-1
+        A[j +dRange, j +1]= 0.6 #soln to be subbed Nz 
     return A 
 
-def matSubberSym():
-    pass
+def matSubberSym(A, dRange, Eqn, righthand = False):
+    
+    #replace Ex stamps H[nz] with Eqn.rhs[j-dRange] 
+    if (righthand == False):   # Contains full eqn
+           for j in range(1, dRange):
+               A[j + dRange, j +1] = Eqn.lhs[j]#
+    elif(righthand == True): # contains just soln vector
+          for j in range(1, dRange):
+            A[j + dRange, j +1] = Eqn.rhs[j]
+    return A 
 
 """
 def coEfFinder(V, P, C_V, C_P):
@@ -134,15 +142,17 @@ for i in range(2*Nz-4, 2*Nz+2):
     AFin[i, 2]= Eqn.rhs[i].subs('Hy_{}'.format(i), Eqn.lhs[i-2*Nz-3])
     
     
-Step 1: Create symbolic matrix A. 
+Step 1: Create zero filled matrix A . 
 Step 2: Create Xn, B, UnP1, XnP1
 Step 3: For loop sub in blocks of A with envsetup values and recursives 
 Step 4: Generate AFin, sub in RHS into recursives 
 Step 5: Solve for basis vectors of Xn, save into XnP1
-Step 6: Extract 1-Nz from XnP1 and place into V.Ex
+Step 6: Extract 1 and place1-Nz from XnP into V.Ex
 Step 7: V.Ex into V.Ex_History[counts]
 Step 8: Loop for counts
 Step 9: Videomaker
+
+
     
 """
 
@@ -150,6 +160,7 @@ blocks = 2
 
 Nz = 5
 AFin = symarray('AFin', (2*Nz+2, 2*Nz+2))
+AFin2 =AFin
 As= symarray('A', (2*Nz+2,2*Nz+2))
 A = matBuilderSym(Nz, As)
 
@@ -161,28 +172,54 @@ Hyn = mat(Hyn)
 Xn = Hyn.row_insert(Nz, Exn)
 Xn = Xn.row_insert(blocks*Nz, zeros)
 B = symarray('B', (2*Nz+2, 2*Nz+2))
+B1 = mat.eye(2*Nz+2)
 UnP1 = symarray("U", (2*Nz+2))
 UnP1 = mat(UnP1)
+UnP1V = np.ones(2*Nz+2).flatten()
+UnP1V = np.asmatrix(UnP1V)
 ExnSol = symarray('Ex_sol ', (Nz))
 HynSol = symarray('Hy_sol ' , (Nz))
 ExnSol = mat(ExnSol)
 HynSol = mat(HynSol)
 XnP1 = HynSol.row_insert(Nz, ExnSol)
 XnP1 = XnP1.row_insert(blocks*Nz, zeros)
+
+
+storePolys = []
+storePolysCo = []
+for k in range(blocks*Nz):
+    storePolys.append(Poly())
+for jj in range(blocks*Nz):
+    storePolysCo.append(storePolys[jj].all_coeffs())
 #setup matrix for source and B 
 
-Eqn = Eq(A*Xn + B*UnP1  , XnP1)
+AXn = A*Xn
+B1U = B1*UnP1V.T
+form = AXn + B1U
+Eqn = Eq(form, XnP1)    ###TYPE ERROR
+A = matSubberSym(A, Nz, Eqn)
+A = simplify(A)
 
-for i in range(2*Nz-4, 2*Nz+2):
-    AFin[i, 2]= Eqn.lhs[i].subs('Hy_{}'.format(i), Eqn.rhs[i-2*Nz-3])
+
+
+
+def AFinBuilder(A, AFin, AFin2, Nz, Eqn):
+    for i in range(Nz, 2*Nz):
+        AFin[i, 2]= Eqn.lhs[i].subs('Hy_{}'.format(i), Eqn.rhs[i-2*Nz-3])
+        AFin2[i, 2]= Eqn.lhs[i].subs('Hy_{}'.format(i), Eqn.lhs[i-2*Nz-3])
+    return AFin, AFin2
+
+system = A@Xn + B1@UnP1V.T
+soln = solve([*system], *Xn)
+soln = simplify(soln)
+
+
 #create matrix A with dashed terms
 #replaced dashed terms with relevant row*col + row+col data 
 #sub new symbolic value back into A
 # linsolve to find XnP1
 
-system = Eq(AFin*Xn + B*UnP1, XnP1)
 
-#print(Eqn)
 
 
 
