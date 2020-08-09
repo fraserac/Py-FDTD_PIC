@@ -27,10 +27,10 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     lamMin = (c0/freq_in)
     
     #print("LamMin ", P.lamMin)
-    Nlam =100
+    Nlam =140
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)#0.95/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)*0.3#0.95/(P.c0*np.sqrt(1/(P.dz**2)))
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
     #P.delT = ma.floor(P.delT* multiplier) / multiplier

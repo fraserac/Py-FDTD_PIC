@@ -82,12 +82,10 @@ def SmoothTurnOn(V,P):
         elif(timer*P.delT >= P.period):  
             Exs.append(0)
             Hys.append(0)
-   # for boo in range(P.timeSteps):
-    #    if(abs(Hys[boo]) > 0 and abs(Exs[boo]) == 0 ):
-     #       Hys[boo-1] =0
-        
-        
-      #      break    
+    for boo in range(P.timeSteps):
+        if(abs(Hys[boo]) > 0 and abs(Exs[boo]) == 0 ):
+            Hys[boo-1] =0
+            break    
     return Exs, Hys   
     
 

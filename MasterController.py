@@ -21,6 +21,7 @@ import TransformHandler as transH
 import TransformHandler as tHand
 import winsound
 import pyttsx3
+from sklearn.linear_model import Ridge
 
 #from numba import njit as nj
 from numba import jitclass as jclass
@@ -385,7 +386,7 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
                             C_V.psi_Hy_Old[counts] = C_V.tempTempVarPsiEx[P.x2Loc]
     return V, P, C_V, C_P, Exs, Hys
 
-# calc nz and timesteps from domain size and freq
+# calc nz and timesteps from domain size and freq 
     #keep same domain once it has been setup, so matsetup doesn't need to be called during run.
 
  
@@ -394,11 +395,11 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
 #########
 
 MORmode = True   
-domainSize =1200
+domainSize =2500
 freq_in =1e9
 # using matsetup anyway, feed in from here?
 setupReturn = []*20
-setupReturn=envDef.envSetup(freq_in, domainSize, 500, 550)
+setupReturn=envDef.envSetup(freq_in, domainSize, 550, 600)
 P= Params(*setupReturn, MORmode, domainSize, freq_in) #be carefu5 with tuple 
 V=Variables(P.Nz, P.timeSteps)
 C_P = CPML_Params(P.dz)
@@ -556,26 +557,35 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
         
         De, Dh, K, Kt = matCon.blockBuilder(V, P, C_V, C_P)
         
-        A, blocks =matCon.ABuild(A, P, De, Dh, K, Kt, blocks=2)
-        matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, A)
+        
+        
         Xn = matCon.BasisVector(V, P, C_V, C_P)
         UnP1A, UnP1B, B = matCon.BAndSourceVector(V, P, C_V, C_P)
         
         B, V.Ex, V.Ex_History, V.Hy, UnP1, Xn = matCon.TimeIter(A, B, UnP1A, UnP1B, Xn, V, P, C_V, C_P)
         """
+        
+        A, B, source = matCon.initMat(V, P, C_V, C_P)
         De, Dh, K, Kt = matCon.blockBuilder(V, P, C_V, C_P)
         R, F = matCon.RandFBuild(P, De, Dh, K, Kt)
-        #matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, A)
+       # A, blocks =matCon.ABuild(A, P, De, Dh, K, Kt)
+        print("(R+F)^-1*(R-F), stability")
+        toInv = R.todense()+F.todense()
+        inverse = np.linalg.inv(toInv)
+        inverse = sparse.csc_matrix(inverse)
+        matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
+       
+        
         Xn = matCon.BasisVector(V, P, C_V, C_P)
         UnP1A, UnP1B, B = matCon.BAndSourceVector(V, P, C_V, C_P)
-        V.Ex, V.Ex_History, V.Hy, UnP1 = matCon.solnDenecker(R, F, UnP1A, UnP1B, Xn, V, P, C_V, C_P)
+        V.Ex, V.Ex_History, V.Hy, UnP1 = matCon.solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P)
         toc = tim.perf_counter()
         print("Time taken with sparse matrix: ", toc-tic)
         
         VideoMaker(P, V)
         winsound.Beep(freq, duration)  
         engine = pyttsx3.init()
-        engine.say('MODEL ORDER REDUCTION METHOD FINISHED')
+        engine.say('FRASER, MODEL ORDER REDUCTION METHOD FINISHED')
         engine.runAndWait()
     if P.MORmode == False:
         return V, P, C_V, C_P, Exs, Hys
