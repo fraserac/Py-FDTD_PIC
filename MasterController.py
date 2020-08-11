@@ -395,11 +395,11 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
 #########
 
 MORmode = True   
-domainSize =2500
-freq_in =1e9
+domainSize =1000
+freq_in =4e9
 # using matsetup anyway, feed in from here?
 setupReturn = []*20
-setupReturn=envDef.envSetup(freq_in, domainSize, 550, 600)
+setupReturn=envDef.envSetup(freq_in, domainSize, 250, 400)
 P= Params(*setupReturn, MORmode, domainSize, freq_in) #be carefu5 with tuple 
 V=Variables(P.Nz, P.timeSteps)
 C_P = CPML_Params(P.dz)
@@ -543,7 +543,7 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
         winsound.Beep(freq, duration)  
         engine = pyttsx3.init()
         engine.say('beep')
-        engine.runAndWait()
+        engine.runAndWait() 
         
         
         
@@ -570,14 +570,17 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
         R, F = matCon.RandFBuild(P, De, Dh, K, Kt)
        # A, blocks =matCon.ABuild(A, P, De, Dh, K, Kt)
         print("(R+F)^-1*(R-F), stability")
-        toInv = R.todense()+F.todense()
-        inverse = np.linalg.inv(toInv)
-        inverse = sparse.csc_matrix(inverse)
-        matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
+       
+        
+       # toInv = R.todense()+F.todense()
+        #inverse = np.linalg.inv(toInv)
+        #inverse = sparse.csc_matrix(inverse)
+        
+        #matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
        
         
         Xn = matCon.BasisVector(V, P, C_V, C_P)
-        UnP1A, UnP1B, B = matCon.BAndSourceVector(V, P, C_V, C_P)
+        UnP1A, UnP1B = matCon.SourceVector(V, P, C_V, C_P)
         V.Ex, V.Ex_History, V.Hy, UnP1 = matCon.solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P)
         toc = tim.perf_counter()
         print("Time taken with sparse matrix: ", toc-tic)
