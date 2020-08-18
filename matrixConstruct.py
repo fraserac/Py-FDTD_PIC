@@ -85,14 +85,19 @@ def BasisVector(V, P, C_V, C_P):
     Xn = Xn.reshape(len(Xn), 1)
     return Xn
 
-def BAndSourceVector(V,P, C_V, C_P):
-    B = np.zeros((P.Nz*2+2, P.Nz*2+2))
+def SourceVector(V,P, C_V, C_P):
+    
     UnP1A = np.ones(P.Nz+1)
     UnP1B = np.ones(P.Nz+1)
+    
+    
+    return UnP1A, UnP1B
+
+def BGenerator(P):
+    B = np.zeros((P.Nz*2+2, P.Nz*2+2))
     B[P.nzsrc, P.nzsrc] = 1
     B[P.Nz+1+P.nzsrc-1, P.nzsrc-1 +P.Nz+1] =1
-    
-    return UnP1A, UnP1B, B
+    return B
 """
 This function builds the blocks for the MOR method update matrix
 Firstly, build bare bones basic from ground up. E,H + source.
@@ -177,56 +182,148 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P):
     
     #XnP1 =sparse.csc_matrix(XnP1)
     #Xn = sparse.csc_matrix(Xn)
-    R = sparse.csc_matrix(R)
-    F = sparse.csc_matrix(F)
-    k = 100 # verify too big or small? A priori if better
-    Q, H, v0, k = MORViaSPRIM(Xn, XnP1, 2*P.Nz+2,R, k, F, P, V, C_V, C_P)
+    #R = sparse.csc_matrix(R)
+    #F = sparse.csc_matrix(F)
+    k = 1000 # verify too big or small? A priori if better
+    #Q, H, k, Xn_red, XnP1_red, Q_sp = MORViaSPRIM(Xn, XnP1, 2*P.Nz+2,R, k, F, P, V, C_V, C_P)
+    summer = (R+F)
+    winter = (R-F)
+  
+    
+    summer = sparse.csc_matrix(summer)
+    if(sparse.issparse(winter)):
+        winter = winter.todense()
+    winter = np.asmatrix(winter)
+    
+    #winter = sparse.csc_matrix(winter)
+    #s_0 = P.freq_in
+   # stencil = (s_0*summer -winter)
+    #stencil = stencil.todense()
+    
+    #Per, stenL, stenU = li.lu(stencil)
+    #invStenL = np.linalg.inv(stenL)
+    #invStenU = np.linalg.inv(stenU)
+    #invSten = invStenU@invStenL
+    Per, stenL, stenU = li.lu(winter)
+    invStenL = np.linalg.inv(stenL)
+    invStenU = np.linalg.inv(stenU)
+    invSten = invStenU@invStenL
+    invSten = sparse.csc_matrix(invSten)
+    M = invSten@summer #multiply summer by inverse of LU decomp
+    B = BGenerator(P)
+    B = sparse.csc_matrix(B)
+   # Q = invSten@B
+    V_a = np.random.randint(5, size=(len(winter), k)) # redundant
+  
+    #Q = Q.astype(float)
+    #M = M.astype(float)
+    
+    breakpoint()
+    #M = (S0(summer)-winter)^-1@summer, R = (s0((summer)-winter)^-1@B)
+    #LU DECOMP OF M 
+    #inv = sparse.csc_matrix(inv)
+    
+    
+    
+    #A = sparse.csc_matrix(A)
+    #Q = np.random.randint(5, size=(2*P.Nz+2,k+1))
+    #Q= Q.astype(float)
+    
+    #if(sparse.issparse(M)):
+     #   M = M.todense()
+    print("Starting Arnoldi process")
+    V_sp, H, k = GlobalArnoldi(M, V_a, k)
+   
+    #V_sp, R = np.linalg.qr(V_sp)#
+
+   # print("Performing Orthonormal tests")
+    #check = np.allclose(V_sp.T @ V_sp, np.eye(V_sp.shape[1]), rtol =1e-2)
+   # print(" ortho check: ", check)
+     #unit tests, check hessenberg/orthonorm
+    print("Projector check:" )
+    
+    
+    check = np.allclose(V_sp.T@V_sp, V_sp)
+    print(check)
+    breakpoint()
+    
+    V_spt = V_sp.T
+    #Xn_red = np.dot(Q_spt, Xn)
+   # Q_sp = sparse.csc_matrix(Q_sp)
+    #Q_spt = sparse.csc_matrix(Q_spt)
+    #breakpoint()
+    XnP1_red =  V_spt@XnP1
+   # M = sparse.csc_matrix(M)
+    #A_red = M#Q_spt@M@Q_sp
+    winter_red = V_spt@winter@V_sp
+    summer_red = V_spt@summer@V_sp
+   
+    #A_red = sparse.csc_matrix(A_red)
+    #if (sparse.issparse(A_red)):
+      #  A_red = A_red.todense()
+    print("Eigenvalue decomp...")
+    #winter_red= eigenvalueDecomp(winter_red)
+    #summer_red  = eigenvalueDecomp(summer_red)
+    winter_red = sparse.csc_matrix(winter_red)
+    #summer_red = sparse.csc_matrix(summer_red)
+    #B_a_red = Q_spt@inv@Q_sp
     for jj in range(0,P.timeSteps):
         print("Timestepping, step number: ", jj, "/ ", P.timeSteps)
         
-       
        # y = y.reshape(len(y),1)
                 #XnP1 = sparse.linalg.spsolve((R+F), y)
         
         #XnP1 = sparse.csc_matrix(XnP1)
-        UnP1A, UnP1B, B = BAndSourceVector(V, P, C_V, C_P)
+        UnP1A, UnP1B = SourceVector(V, P, C_V, C_P)
+        
         if B.shape != (2*P.Nz+2, 2*P.Nz+2):
             print("B is wrong shape")
             sys.exit()
        
-        UnP1A = (Hys[jj]*UnP1A*P.Nlam)/P.courantNo
-        UnP1B = -((Exs[jj]*UnP1B*P.Nlam)/P.CharImp)/P.courantNo
+        UnP1A = ((Hys[jj]*UnP1A)/P.courantNo)*P.CharImp
+        UnP1B = -((Exs[jj]*UnP1B)/P.courantNo)
         UnP1 = np.block([UnP1A, UnP1B])
-        UnP1 = UnP1.reshape(len(UnP1), 1)
-        UnP1 = sparse.csr_matrix(UnP1)
-        B = sparse.csr_matrix(B)
-        #breakpoint()
         
-        y = (R-F)@XnP1 +B@UnP1
+        UnP1 = UnP1.reshape(len(UnP1), 1)
+        UnP1_red = UnP1#Q_spt@UnP1
+        UnP1_red = UnP1_red.reshape(len(UnP1_red), 1)
+       # UnP1_red = sparse.csr_matrix(UnP1_red)
+        #B = sparse.csr_matrix(B) #move out of bandsourvect
+       
+        B_red = V_spt@B
+        #B_full_red = np.dot(B_a_red, B_red)
+        #B_full_red = sparse.csc_matrix(B_full_red)
+        
+        
+        XnP1_red = H@XnP1_red +B_red@UnP1_red
         #XnP1 = A@XnP1 + B@UnP1
         #breakpoint()
         
-        #R= R.todense()
-        #F = F.todense()
-        #XnP1 = XnP1.todense()
-        summer = R+F
+        #XnP1_red = np.linalg.solve(summer_red, y)
+        XnP1_red = XnP1_red.reshape(len(XnP1_red),1)
+        #solve in two steps again.
         #y = y.todense()
         
-        XnP1 = sparse.linalg.spsolve(summer, y )  # outputs NONSPARSE
-        XnP1 = XnP1.reshape(len(XnP1), 1)
+        #XnP1_red = XnP1_red.reshape(len(XnP1_red), 1)
         #XnP1 = sparse.csc_matrix(XnP1)
         
         #print(XnP1[np.nonzero(XnP1)], "NONZERO")
         #breakpoint()
          
         #XnP1 = XnP1.reshape(len(XnP1), 1)
+      #  XnP1 = Q_sp@XnP1_red
+        #XnP1 = XnP1.todense()
+        
+        XnP1 = np.real(V_sp@XnP1_red)
+        
         
         for ii in range(len(V.Ex)-1):
-            V.Ex[ii] = XnP1[ii]
-            V.Hy[ii] = XnP1[ii+len(V.Ex)]
+           # breakpoint()
+            V.Ex[ii] = XnP1[ii][0]
+            V.Hy[ii] = XnP1[ii+len(V.Ex)][0]
         V.Ex_History[jj] = V.Ex
         
-        XnP1 = sparse.csc_matrix(XnP1)
+        #XnP1 = sparse.csc_matrix(XnP1)
             
         #Xn = XnP1
         
@@ -281,7 +378,7 @@ def vonNeumannAnalysisMOR(V,P,C_V,C_P, coEfMat):
     
 
 # call this in soln denecker before solving equations
-def MORViaSPRIM(Xn, XnP1, n, R, k, F, P, V, C_V, C_P):  #from Li Xihao and SPRIM FREUND and intro to MOR
+def MORViaSPRIM(Q, Xn, XnP1, num, R, k, F, P, V, C_V, C_P):  #from Li Xihao and SPRIM FREUND and intro to MOR
     """
     Takes in matrices E and A from LTI state vectors from matrix
     eqns.
@@ -293,26 +390,28 @@ def MORViaSPRIM(Xn, XnP1, n, R, k, F, P, V, C_V, C_P):  #from Li Xihao and SPRIM
     summer = (R+F)
     winter = (R-F)
     summer = summer.todense()
-    A = np.linalg.inv(summer)@winter
+   # A = np.linalg.inv(summer)@winter
     #A = sparse.csc_matrix(A)
-    Q = np.ones((n,k+1))
+   # Q = np.ones((num,k+1))
      # Normalisation (sets L2 norm = 1)
     
    
     Q, H, k = ArnoldiProcess(A, Q, k)
-    H = eigenvalueDecomp(H)
-    
-   #CONSIDER EXPLICIT RESTART
+    # H = eigenvalueDecomp(H)
    
+   #CONSIDER EXPLICIT RESTART
+    blocks = 2
    #SPRIM -> partition V into blocks size of E. H etc, set as diagonal block matrix 
-    breakpoint()
-    Q1 = Q[:n, :n]
-    Q2 = Q[n+1:, n+1:]
-    Q_sp = np.kron(Q1, Q2)
-    breakpoint()
-    Xn_red = Q_sp@Xn
-    XnP1_red = Q_sp@XnP1
-    breakpoint()
+    
+    Q1 = Q[:int(num/blocks), :int(k/blocks)]
+    Q2 = Q[int(num/blocks):, :int(k/blocks)]
+    
+    Q_sp = np.block( [  [Q1, np.zeros(Q1.shape)], [np.zeros(Q2.shape), Q2]      ])
+    
+    
+    Xn_red = Q_sp.T@Xn
+    XnP1_red = Q_sp.T@XnP1
+    
    #Matrix multiply Vsprim by Xn
    
    #Eigenvalue perturbation -> eigenvalue decomposition 
@@ -324,7 +423,7 @@ def MORViaSPRIM(Xn, XnP1, n, R, k, F, P, V, C_V, C_P):  #from Li Xihao and SPRIM
    # result is obtained by V@Xn+1 roughlEq Xn+1 feed into V.Ex, V.Hy
    # solve system for Xn+1 follow eqn through 
     
-    return Q, H, v0, k
+    return Q, H, k, Xn_red, XnP1_red, Q_sp
 
 def ArnoldiProcess(A, Q, k):
         
@@ -339,39 +438,52 @@ def ArnoldiProcess(A, Q, k):
             H: matrix (small, k*k) containing the Krylov approximation of A
     H = V.T @ A @ V? 
     """
-    
+    breakpoint()
     inputType = A.dtype.type
      # Q =  [q1 q2 q3... qn] where q1.n are column vectors
     H = np.asmatrix( np.zeros((k+1,k), dtype=inputType) ) # AmQn = Qn+1Hn
     A = sparse.csc_matrix(A)
-    Q[:,0] = Q[:,0]/np.linalg.norm(Q[:,0])
     
-    
-    for m in range(k):
-        q = Q[:,m]
-        qp1 = A@q # take the column vector and multiply by A
-        for j in range( m+1):
-            
-            H[ j, m] = (q.T.conj()* qp1 )[0]
-            
-            qp1 -= H[ j, m] * q
-        H[ m+1, m] = np.linalg.norm(qp1)  
-        tol0 = 1e-12
-        if m is not k-1:
-            if H[m+1, m] > tol0:
+    nrm = np.linalg.norm(Q[:,0])
+    Q[:,0] = Q[:,0]/nrm
+    breakpoint()
+    if np.isclose(np.linalg.norm(Q[:,0]),1):
+       
+        for m in range(k-1):
+            q = Q[:,m]
+            qp1 = A@q # take the column vector and multiply by A
+            for j in range(m+1):
                 
-                Q[:, m+1] = Q[:,m]/H[m+1,m]  #normalise
-            else: 
-                return Q, H[:-1, :], k
+                H[ j, m] = (Q[:,j].conj().T* qp1 )[0]
+                
+                qp1 -= H[ j, m] * Q[:,j]
+            H[ m+1, m] = np.linalg.norm(qp1)  
+            
+            tol0 = 1e-12
+            if m is not k-1:
+                if H[m+1, m] > tol0:
+                    
+                    Q[:, m+1] = Q[:,m]/(np.linalg.norm(Q[:,m])) #normalise
+                    
+                else: 
+                    return Q, H[:-1,:], k
+    else:
+        print("Q first col not normalised: ", np.linalg.norm(Q[:,0]))
+        sys.exit()
     return Q, H[:-1,:], k
 
 def eigenvalueDecomp(H):
     HeigVals = np.linalg.eigvals(H)
     HeigVecs = np.asmatrix(np.linalg.eig(H)[1]) #columns are eigenvectors associated with each matching eigenval
-    
+   # HeigVecs = sparse.csc_matrix(HeigVecs)
     HeigValsDiag = np.diag(HeigVals)
-    HeigVecsInv = np.linalg.inv(HeigVecs)
-    shrinkFactor = 0.99
+    Per,  HeigVecsL, HeigVecsU = li.lu(HeigVecs)
+    print("inverting for eigenvalue decomposition")
+    HeigVecsInvL = np.linalg.inv(HeigVecsL)
+    HeigVecsInvU = np.linalg.inv(HeigVecsU)
+    HeigVecsInv = HeigVecsInvU@HeigVecsInvL
+    print("matrices inverted")
+    shrinkFactor = 0.999
     
     
     #Check sparsity, size etc 
@@ -379,11 +491,41 @@ def eigenvalueDecomp(H):
         if abs(HeigVals[i]) > 1:
             HeigVals[i] = (shrinkFactor*HeigVals[i])/abs(HeigVals[i])
 
-    H = HeigVecsInv@HeigValsDiag@HeigVecs
+    H1 = HeigVecsInv@HeigValsDiag
+    H = H1@HeigVecs
     
     return H
     
+def GlobalArnoldi(A, V_a, k):
     
+    H = np.asmatrix( np.ones((k+1,k)) ) # AmQn = Qn+1Hn
+    A = sparse.csc_matrix(A) # may cause issue
+    #fnrm = np.linalg.norm(Q[:,0])
+    breakpoint()
+#    Q[:,0]= Q[:,0]/fnrm
+    
+   #
+    V, R = np.linalg.qr(V_a) #R from kr(M,R) is fed in as Q, output as V then Q_sp
+   # breakpoint()
+    
+    
+    for j in range(k-1):
+        
+        W = A@V[:,j]
+        print("progress through Arnoldi: ", j, "/", k)
+        for i in range(j+1):
+            H[i,j] = np.dot(V[:,i].T.conj(), W)
+            W -= H[i,j]*V[:,i].T.conj()
+            
+        #end for i
+        tol0 = 1e-12
+        H[j+1, j] =  np.linalg.norm(W)
+        if abs(H[j+1, j]) >= tol0:
+         V[:,j]= V[:,j]/H[j+1, j]
+        else:
+            print("invariant subspace found ", j)
+            return V, H[:-1,:], j
+    return V, H[:-1,:], j
 
 #ticc = time.perf_counter()
 
