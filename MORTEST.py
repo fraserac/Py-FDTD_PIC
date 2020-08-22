@@ -18,6 +18,8 @@ from scipy.sparse.linalg import splu, inv
 from numba import int32, float32, int64, float64, boolean
 import numba
 from numba.experimental import jitclass as jc
+from scipy import fftpack,fft
+
 #refactor for numba
 #issues np.matrix, vt typing, norm of matrix, hermitian 
 #replace np matrix with array 
@@ -165,7 +167,7 @@ Y = np.sin(S) + 0.5*np.sin(S2)
 
 nzsrc = int(100)
 Nz = noOfVals
-k =400
+k =1000
 Smat = np.diag(Y)
 
 B = np.zeros((Nz, Nz))
@@ -236,12 +238,39 @@ XnP1Act =Smat@Xn
 #XnP1Smoo = sgf(XnP1.ravel(), noOfVals,7)
 #mult = np.max(XnP1)/np.max(XnP1Smoo)
 
-XnP1Clean = np.poly1d(np.polyfit(S, XnP1.ravel(), 15))(S) #smooth(np.array([XnP1]).ravel(), noOfVals, window = 'hamming')
+XnP1Clean = np.poly1d(np.polyfit(S, XnP1.ravel(), 17))(S) #smooth(np.array([XnP1]).ravel(), noOfVals, window = 'hamming')
 ratio = len(XnP1)/k
-plt.plot(XnP1Clean)
+plt.plot(XnP1Clean*ratio)
 plt.plot(XnP1Act)
+trans = fftpack.fft(XnP1Clean)
+transAct =fftpack.fft(XnP1Act)
+FDXaxis = fftpack.fftfreq(len(trans), d= 0.0062847564963046665)
+FDXaxisAct = fftpack.fftfreq(len(transAct), d = 0.0062847564963046665)
 
 print(ratio, "improvement factor")
+
+
+""""
+Spectrum capture of polyfit/MOR seems good.
+To do: Improve speed of arnoldi iterations
+H2, Hinf norm checks
+Incorporate into main code
+Re-derive MNA form for linear dispersive
+eig/singular pert for stab
+PRIMA/SPRIM for passivity
+all the errors
+refactor codes for numba including overload numba when needed
+refactor for oop good coding. 
+expand to nonlin
+expand to 2d
+incorp particle
+incorp specific comsol/matlab pipeline
+verifications 
+optimise
+experiment
+write thesis
+
+""""
 
 
 
