@@ -37,8 +37,8 @@ class EA(object):
         self.k = k
 
 
-
-def ExampleArnoldi(A, v0, k):
+@nj
+def ExampleArnoldi(A, v0, k, EAVars ): # Issue with [0,0] 
     """
     Arnoldi algorithm (Krylov approximation of a matrix)
         input: 
@@ -52,19 +52,24 @@ def ExampleArnoldi(A, v0, k):
     """
     #print 'ARNOLDI METHOD'
    # inputtype = A.dtype.type
-    V = np.mat(v0.copy() / np.linalg.norm(v0))
-    H = np.zeros((k+1,k))
+    
+    EAVars.V = v0
+    
    # breakpoint()
     for m in range(k):
-        vt = A@V[ :, m]
+        EAVars.vt = A@EAVars.V[ :, m]
         print("progress through Arnoldi: ", m, "/", k)
         for j in range(m+1):
-            H[ j, m] = (V[ :, j].H * vt )[0,0]
-            vt -= H[ j, m] * V[:, j]
-        H[ m+1, m] = np.linalg.norm(vt);
+            EAVars.H[ j, m] = (EAVars.V[ :, j].transpose().conj() @ EAVars.vt )
+            
+            
+            EAVars.vt -= EAVars.H[ j, m] * EAVars.V[:, j]
+        EAVars.H[ m+1, m] = np.linalg.norm(EAVars.vt);
         if m is not k-1:
-            V[:,j] =   vt.copy() / H[ m+1, m] 
-    return V,  H[:-1,:]
+            EAVars.V[:,j] =   EAVars.vt / EAVars.H[ m+1, m] 
+            
+    return EAVars.V,  EAVars.H[:-1,:]
+    
 
 
 def smooth(x,window_len=11,window='hanning'):
@@ -162,12 +167,12 @@ In = np.identity(noOfVals)
 S = np.linspace(-freq*np.pi, freq*np.pi, noOfVals)
 S2 =np.linspace(-freq2*np.pi, freq2*np.pi, noOfVals)
 
-Y = np.sin(S) + 0.5*np.sin(S2)
+Y = np.sin(S) + 0.2*np.sin(S2)
 #plt.plot(Y)
 
 nzsrc = int(100)
 Nz = noOfVals
-k =1000
+k =600
 Smat = np.diag(Y)
 
 B = np.zeros((Nz, Nz))
@@ -179,6 +184,7 @@ M = In
 M = sparse.csc_matrix(M)
 Mtemp =[]
 M2 = In
+M2 = sparse.csc_matrix(M2)
 for i in range(4,9,4):
     s0 = (1j)*2*np.pi*i
     M = M@luInvert(s0*In-Smat)
@@ -191,7 +197,8 @@ for jj in range(4,9,4):
     s0 = (1j)*2*np.pi*jj
     M2= M2@luInvert((s0*In).conj().T-Smat.conj().T)
 
-
+M2 = M2.todense()
+M2 = np.asarray(M2, dtype = np.float64)
 
 #SmatInv = np.linalg.inv(Smat)
 Xn = np.ones(len(Y)).reshape(len(S),1)
@@ -202,17 +209,18 @@ EAVars = EA(k, len(v0))
 #U = np.ones(len(Y))
 #SmatInvB = SmatInv@B
 #plt.plot(Smat@Xn)
-v0= v0.copy() / np.linalg.norm(v0)
+H = np.zeros((k+1,k))
+v0= v0 / np.linalg.norm(v0)
 print("entering arnoldi")
-V, H = ExampleArnoldi(M, v0, k)
+V, H = ExampleArnoldi(M, v0, k, EAVars)
 #V = np.block([np.real(V), np.imag(V)])
 
 
-W, R = ExampleArnoldi(M2,v0, k)
+#W, R = ExampleArnoldi(M2,v0, k, EAVars)
 
 #W = np.block([np.real(W),np.imag(W)])
 
-#W =V
+W =V
 window_len = noOfVals
 
 check = W.T@V
@@ -242,6 +250,7 @@ XnP1Clean = np.poly1d(np.polyfit(S, XnP1.ravel(), 17))(S) #smooth(np.array([XnP1
 ratio = len(XnP1)/k
 plt.plot(XnP1Clean*ratio)
 plt.plot(XnP1Act)
+"""
 trans = fftpack.fft(XnP1Clean)
 transAct =fftpack.fft(XnP1Act)
 FDXaxis = fftpack.fftfreq(len(trans), d= 0.0062847564963046665)
@@ -250,7 +259,7 @@ FDXaxisAct = fftpack.fftfreq(len(transAct), d = 0.0062847564963046665)
 print(ratio, "improvement factor")
 
 
-""""
+
 Spectrum capture of polyfit/MOR seems good.
 To do: Improve speed of arnoldi iterations
 H2, Hinf norm checks
@@ -269,8 +278,7 @@ verifications
 optimise
 experiment
 write thesis
-
-""""
+"""
 
 
 
