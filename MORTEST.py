@@ -19,6 +19,7 @@ from numba import int32, float32, int64, float64, boolean
 import numba
 from numba.experimental import jitclass as jc
 from scipy import fftpack,fft
+from statsmodels.nonparametric.smoothers_lowess import lowess
 
 #refactor for numba
 #issues np.matrix, vt typing, norm of matrix, hermitian 
@@ -58,7 +59,7 @@ def ExampleArnoldi(A, v0, k, EAVars ): # Issue with [0,0]
    # breakpoint()
     for m in range(k):
         EAVars.vt = A@EAVars.V[ :, m]
-        print("progress through Arnoldi: ", m, "/", k)
+        #print("progress through Arnoldi: ", m, "/", k)
         for j in range(m+1):
             EAVars.H[ j, m] = (EAVars.V[ :, j].transpose().conj() @ EAVars.vt )
             
@@ -156,23 +157,23 @@ def luInvert(a):
 # s0 = i*2*np.pi*freq 
 # In = I(nxn)
 # A = smat
-    
-freq = 4
-freq2 = 8
+
+freq = 4e9
+freq2 = 8e9
 
 #s02 = (1j)*2*np.pi*freq2
-noOfVals = 4000
+noOfVals = 3500
 In = np.identity(noOfVals)
 
 S = np.linspace(-freq*np.pi, freq*np.pi, noOfVals)
 S2 =np.linspace(-freq2*np.pi, freq2*np.pi, noOfVals)
 
-Y = np.sin(S) + 0.2*np.sin(S2)
+Y = np.sin(S*2*np.pi*1e-10) + 0.5*np.sin(S2*np.pi*1e-10)
 #plt.plot(Y)
 
 nzsrc = int(100)
 Nz = noOfVals
-k =600
+k =1000
 Smat = np.diag(Y)
 
 B = np.zeros((Nz, Nz))
@@ -195,7 +196,7 @@ M = np.asarray(M, dtype = np.float64)
 
 for jj in range(4,9,4):
     s0 = (1j)*2*np.pi*jj
-    M2= M2@luInvert((s0*In).conj().T-Smat.conj().T)
+    M2= M2@(luInvert((s0*In)-Smat).conj().T)
 
 M2 = M2.todense()
 M2 = np.asarray(M2, dtype = np.float64)
@@ -204,23 +205,33 @@ M2 = np.asarray(M2, dtype = np.float64)
 Xn = np.ones(len(Y)).reshape(len(S),1)
 v0 = np.random.randint(5, size=(len(Y),k))
 v0 = v0.astype(float)
+v2 = np.random.randint(5, size=(len(Y),k))
+v2 = v0.astype(float)
+    
+    
 EAVars = EA(k, len(v0))
 
 #U = np.ones(len(Y))
 #SmatInvB = SmatInv@B
 #plt.plot(Smat@Xn)
 H = np.zeros((k+1,k))
-v0= v0 / np.linalg.norm(v0)
+#v0[:,0]= (v0[:,0] / np.linalg.norm(v0[:,0]))
+v0, R = np.linalg.qr(v0)
+v2, R2 = np.linalg.qr(v2)
+v0 = M@v0
+v2 = M2@v2
+
+#v2[:,0]= (v2[:,0] / np.linalg.norm(v2[:,0]))
 print("entering arnoldi")
 V, H = ExampleArnoldi(M, v0, k, EAVars)
-#V = np.block([np.real(V), np.imag(V)])
+V = np.block([np.real(V), np.imag(V)])
 
 
-#W, R = ExampleArnoldi(M2,v0, k, EAVars)
+W, R = ExampleArnoldi(M2,v2, k, EAVars)
 
-#W = np.block([np.real(W),np.imag(W)])
+W = np.block([np.real(W),np.imag(W)])
 
-W =V
+#W =V
 window_len = noOfVals
 
 check = W.T@V
@@ -242,15 +253,37 @@ elif noOfVals%2 ==1:
     wind = int(noOfVals/2)
     
 XnP1Act =Smat@Xn
-    
+def experimPhaseShifter(a, phi = np.pi*0.1):
+    b = np.sin(np.arcsin(a) +(phi))
+    #b = np.poly1d(np.polyfit(np.arange(len(b1)), b1.ravel(), 7))(np.arange(len(b1)))
+    return b
 #XnP1Smoo = sgf(XnP1.ravel(), noOfVals,7)
 #mult = np.max(XnP1)/np.max(XnP1Smoo)
 
-XnP1Clean = np.poly1d(np.polyfit(S, XnP1.ravel(), 17))(S) #smooth(np.array([XnP1]).ravel(), noOfVals, window = 'hamming')
+XnP1Clean =smooth(np.array([XnP1]).ravel(), 150, window = 'flat')
+XnP1Clean2 = smooth(np.array([XnP1Clean]).ravel(), 150, window = 'hanning')
+
+XnPol = np.poly1d(np.polyfit(np.arange(len(XnP1Clean)), XnP1Clean.ravel(), 7))(np.arange(len(XnP1Clean))) #
 ratio = len(XnP1)/k
-plt.plot(XnP1Clean*ratio)
-plt.plot(XnP1Act)
-"""
+#XnP1Exp = experimPhaseShifter(XnP1Clean) 
+#XnP1Exp -= np.median(XnP1Exp)
+#XnP1Exp2 = experimPhaseShifter(XnP1Clean, phi = -30) 
+#XnP1Exp2 -= np.median(XnP1Exp2)
+b,a =sig.butter(2,0.5)
+zi = sig.lfilter_zi(b,a)
+XnP1_0 = sig.filtfilt(b,a, XnP1, padlen = XnP1.shape[-1]-2)
+XnP1_0 =np.poly1d(np.polyfit(np.arange(len(XnP1_0)), XnP1_0.ravel(), 9))(np.arange(len(XnP1_0)))
+#plt.plot(XnP1Exp*2*ratio, 'k--')
+#plt.plot(XnP1Exp2*2*ratio, 'r--')
+#plt.plot(XnP1Clean*ratio*2)
+#plt.plot(XnP1Clean2*ratio*2)
+plt.plot(XnP1_0*ratio)
+plt.plot(XnP1Act, 'go')
+#plt.plot(XnPol*ratio)
+
+plt.legend()
+print("Finished")
+
 trans = fftpack.fft(XnP1Clean)
 transAct =fftpack.fft(XnP1Act)
 FDXaxis = fftpack.fftfreq(len(trans), d= 0.0062847564963046665)
@@ -259,7 +292,7 @@ FDXaxisAct = fftpack.fftfreq(len(transAct), d = 0.0062847564963046665)
 print(ratio, "improvement factor")
 
 
-
+"""
 Spectrum capture of polyfit/MOR seems good.
 To do: Improve speed of arnoldi iterations
 H2, Hinf norm checks
@@ -278,9 +311,8 @@ verifications
 optimise
 experiment
 write thesis
+
 """
-
-
 
 
 
