@@ -496,6 +496,7 @@ def AnalyticalReflectionE(V, P):
     epsDom = (V.omega_0E**2-(2*np.pi*P.freq_in**2) - 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
+    # INTERESTING BUG WITH ARCSIN INVALID VALUE, UNIT TEST 
     mu =1
     imp1 = 1
     imp2 = np.sqrt(mu/np.real(epsilon)+0j)
