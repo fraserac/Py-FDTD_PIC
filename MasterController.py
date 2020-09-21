@@ -1,6 +1,6 @@
- # -*- coding: utf-8 -*-
+  # -*- coding: utf-8 -*-
 """
-Fields controller, this script is the master that guides all the processes,
+Fields controller, this script is the master that controls all the processes,
 calling the field updates and eventually particle updaters and field interpolater
 as well as any memory saving methods like sparse matrices etc.
 BC functions called as well
@@ -24,16 +24,23 @@ import pyttsx3
 from sklearn.linear_model import Ridge
 
 #from numba import njit as nj
-from numba import jitclass as jclass
+from numba.experimental import jitclass as jclass
 from numba import int32, float32, int64, float64, boolean
 import time as tim
-from memory_profiler import profile
+#from memory_profiler import profile
 import BulkTest as bt
 import matrixConstruct as matCon
-
-
+from varname import nameof
+import sys
 duration = 1000  # milliseconds
 freq = 300  # Hz
+
+
+"""
+Below, specify typings of jclass members, as numba 
+doesn't use dynamic typing like base python.
+
+"""
 
 specV = [('Nz', int32),              
     ('timeSteps', float32),
@@ -106,9 +113,9 @@ class Variables(object):
         self.epsilon = np.ones(Nz)
         self.mu = np.ones(Nz)
         self.polarisationCurr = np.zeros(Nz)
-        self.plasmaFreqE = 12e9
-        self.gammaE = 1e7
-        self.omega_0E= 10e9
+        self.plasmaFreqE = 7e9
+        self.gammaE = 1e8
+        self.omega_0E= 6e9
         self.tempVarPol =np.zeros(Nz)
         self.tempTempVarPol =np.zeros(Nz)
         self.tempVarE =np.zeros(Nz)
@@ -176,10 +183,13 @@ specP=[('Nz', int32),
     ('pmlWidth', int32),
     ('hEcompsCo', float64),
     ('domainSize', int32), 
-    ('MORmode', boolean)]
+    ('MORmode', boolean), 
+    ('delayMOR', int32)]
+
+
 @jclass(specP)
 class Params(object):
-    def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in):
+    def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in, delayMOR):
         
         self.permit_0 = sci.constants.epsilon_0
         self.permea_0 = sci.constants.mu_0
@@ -208,6 +218,7 @@ class Params(object):
         self.pmlWidth = pmlWidth
         self.domainSize = domainSize
         self.MORmode = MORmode
+        self.delayMOR = delayMOR
         
     def __repr__(self):
         return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
@@ -222,6 +233,8 @@ specCP = [('kappaMax',float32),
           ('sigmaHMax', float64),
           ('sigmaOpt',float64),
           ('alphaMax',float32),]
+
+
 @jclass(specCP)
 class CPML_Params(object):
     def __init__(self, dz):
@@ -350,10 +363,7 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
                V.Ex = BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P)
               
                C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-               
-               
-               
-               
+                  
                V.Ex_History[counts] = V.Ex
                #breakpoint()
                #print(np.max(V.Ex),"Ex max")
@@ -386,21 +396,19 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
                             C_V.psi_Hy_Old[counts] = C_V.tempTempVarPsiEx[P.x2Loc]
     return V, P, C_V, C_P, Exs, Hys
 
-# calc nz and timesteps from domain size and freq 
-    #keep same domain once it has been setup, so matsetup doesn't need to be called during run.
-
  
 #######################################
 ###############   VARIABLES AND CALLS FOR PROGRAM INITIATION
 #########
 
-MORmode = True   
-domainSize =2500
-freq_in =1e9
-# using matsetup anyway, feed in from here?
-setupReturn = []*20
-setupReturn=envDef.envSetup(freq_in, domainSize, 550, 600)
-P= Params(*setupReturn, MORmode, domainSize, freq_in) #be carefu5 with tuple 
+MORmode = True 
+domainSize =1100
+freq_in =4e9
+delayMOR = 10
+noOfEnvOuts = 20
+setupReturn = []*noOfEnvOuts
+setupReturn =envDef.envSetup(freq_in, domainSize, 400, 450)   # this function returns a list with all evaluated model parameters
+P= Params(*setupReturn, MORmode, domainSize, freq_in, delayMOR) #be careful with tuple, check ordering of parameters 
 V=Variables(P.Nz, P.timeSteps)
 C_P = CPML_Params(P.dz)
 C_V = CPML_Variables(P.Nz, P.timeSteps)
@@ -543,7 +551,7 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
         winsound.Beep(freq, duration)  
         engine = pyttsx3.init()
         engine.say('beep')
-        engine.runAndWait()
+        engine.runAndWait() 
         
         
         
@@ -570,14 +578,17 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
         R, F = matCon.RandFBuild(P, De, Dh, K, Kt)
        # A, blocks =matCon.ABuild(A, P, De, Dh, K, Kt)
         print("(R+F)^-1*(R-F), stability")
-        toInv = R.todense()+F.todense()
-        inverse = np.linalg.inv(toInv)
-        inverse = sparse.csc_matrix(inverse)
-        matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
+       
+        
+       # toInv = R.todense()+F.todense()
+        #inverse = np.linalg.inv(toInv)
+        #inverse = sparse.csc_matrix(inverse)
+        
+        #matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
        
         
         Xn = matCon.BasisVector(V, P, C_V, C_P)
-        UnP1A, UnP1B, B = matCon.BAndSourceVector(V, P, C_V, C_P)
+        UnP1A, UnP1B = matCon.SourceVector(V, P, C_V, C_P)
         V.Ex, V.Ex_History, V.Hy, UnP1 = matCon.solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P)
         toc = tim.perf_counter()
         print("Time taken with sparse matrix: ", toc-tic)

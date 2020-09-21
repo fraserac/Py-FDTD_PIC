@@ -17,7 +17,7 @@ import matplotlib.pylab as plt
 
 def VideoMaker(P,V):
     fig, ax = plt.subplots()
-    interval =20
+    interval =5
     my_path = os.getcwd() 
     newDir = "Ex fields"
     
@@ -47,9 +47,10 @@ def VideoMaker(P,V):
         print(str.format('{0:.2f}', (100/(P.timeSteps/(i+1)))),"% complete")
         ax.clear()
         ax.plot(np.real(V.Ex_History[i]))    
-        plt.title("Ex")
-        ax.set_xlim(0, P.Nz)
-        ax.set_ylim(-2,2)
+        stringTit = "Ex @ ", str(P.delT*i), "seconds"
+        plt.title(stringTit)
+        #ax.set_xlim(0, P.Nz)
+        #ax.set_ylim(-2,2)
         ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
         ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
         ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
