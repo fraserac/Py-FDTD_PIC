@@ -78,12 +78,11 @@ Psi_hxyN12 = Psi_hxy**np1ov2
 # co ef of Je called CO
 Psi_exyN32 = bz*Psi_exyN12 + (az)*K*Hypn1ov2 
 Exnp1=  (dt/De)*(De/dt)*Exn - (dt/De)*K*Hypn1ov2 +Psi_exyN32
-Exnp1= Exnp1 + Psi_hxyN32
-Psi_hxyN32 = bmz*Psi_hxyN12 + cmz*Kt*Exnp1
 Pn1 = al*Pn + bl*Pnm1 + cl*Exnp1
+Psi_hxyN32 = bmz*Psi_hxyN12 + cmz*Kt*Exnp1
 Jen32 = Co*(wl**2*Pn + 2*delta*(Pn1 - Pn)/(2*dt) + (Pn1 -2*Pn +Pnm1)/(dt**2))
-Hypn3ov2 = (dt/Du)*(Du/dt)*Hypn1ov2+  (dt/Du)*Kt*Exnp1  -(dt/Du)*Jen32
-Hypn3ov2 = Hypn3ov2 + Psi_hxyN12
+Hypn3ov2 = (dt/Du)*(Du/dt)*Hypn1ov2+  (dt/Du)*Kt*Exnp1  -(dt/Du)*Jen32 +Psi_hxyN32
+
 
 
 
@@ -94,10 +93,11 @@ Hypn3ov2 = Hypn3ov2 + Psi_hxyN12
 #bob = c.args
 a = Psi_exyN32.expand()
 b = Exnp1.expand()
-e = Pn1.expand()
-f = Jen32.expand()
-c = Hypn3ov2.expand()
+c = Pn1.expand()
 d = Psi_hxyN32.expand()
+e = Jen32.expand()
+f = Hypn3ov2.expand()
+
 
  
 #sympy.pprint(Exnp1.expand())
