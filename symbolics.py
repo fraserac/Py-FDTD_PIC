@@ -11,10 +11,113 @@ Co efficients for coupled recursive matrix
 
 from sympy import symbols as sym,  Array as Arr, Eq, solve, symarray, Matrix as mat, latex, Poly
 from sympy.matrices.dense import list2numpy
-
+#from sympy.abc import greek
 import numpy as np
-from sympy import init_printing, linsolve, simplify
+import sympy
+from sympy import collect
+from sympy import MatrixSymbol as matsym
+from sympy import init_printing, linsolve, simplify,init_session
 from IPython.display import display, Markdown, Latex
+from sympy import sympify
+
+
+def non_commutative_sympify(expr_string):
+    parsed_expr = sympy.parsing.sympy_parser.parse_expr(
+        expr_string, 
+        evaluate=False
+    )
+
+    new_locals = {sym.name:sympy.Symbol(sym.name, commutative=False)
+                  for sym in parsed_expr.atoms(sympy.Symbol)}
+
+    return sympy.sympify(expr_string, locals=new_locals)
+
+
+
+init_session(quiet=True)
+init_printing(use_unicode=False, wrap_line=False, no_global=True, use_latex= True)
+Nz = 5
+dz, bmz, cmz, delta, dt, n, np1, np1ov2, np3ov2, nm1, al, bl, cl, Co, wl, bz, az = sym ("Δ_z,b_mz, c_mz,δ, Δ_t,n, n+1, n+1/2, n+3/2, n-1, a_L, b_L, c_L, Co, omega_L, b_z, a_z")
+# bz, az from cpml update
+#al, bl, cl lorentz polarisation
+De, K, Kt, Du, Ex, Hy, Je, P, Psi_exy, Psi_hxy = sym("D_E, K, K^t, D_μ, Ex, Hy, J_e, P, ψ_(exy), ψ_(hxy)", commutative =False)
+
+Exnp1 = Ex**np1
+Exn = Ex**n
+Hypn3ov2 = Hy**np3ov2
+Hypn1ov2 = Hy**np1ov2
+Pn1 = P**np1
+Pn = P**n
+Pnm1 = P**nm1
+Jen32 = Je**np3ov2
+Jen12 = Je**np1ov2
+Psi_exyN32 =  Psi_exy**np3ov2
+Psi_exyN12 = Psi_exy**np1ov2
+Psi_hxyN32 = Psi_hxy**np3ov2
+Psi_hxyN12 = Psi_hxy**np1ov2
+
+#Ep1Mat = matsym("Exnp1", Nz,1)
+#EMat = matsym("Exn", Nz,1)
+#Hp1Mat = matsym("Hynp1", Nz,1)
+#HMat =matsym("Hyn", Nz,1)
+
+#sympy.pprint(Exnp1)
+#sympy.pprint(Exn)
+#sympy.pprint(Hypn3ov2)
+#sympy.pprint(Hypn1ov2)
+
+#De = matsym('De', Nz, Nz)
+#DeInv = matsym('De_I', Nz, Nz)
+#DuInv = matsym('Du_I', Nz, Nz)
+#K = matsym('K', Nz, Nz)
+#Kt = matsym('Kt', Nz, Nz)
+#K = mat(K)
+#sympy.pprint(K)
+## insert psi, write expression for psi, je, P etc then manually collect co-efficients re-arrange to state space form
+# then, convert to MNA form, will SPRIM still work with extension? 
+# co ef of Je called CO
+Psi_exyN32 = bz*Psi_exyN12 + (az)*K*Hypn1ov2 
+Exnp1=  (dt/De)*(De/dt)*Exn - (dt/De)*K*Hypn1ov2 +Psi_exyN32
+Exnp1= Exnp1 + Psi_hxyN32
+Psi_hxyN32 = bmz*Psi_hxyN12 + cmz*Kt*Exnp1
+Pn1 = al*Pn + bl*Pnm1 + cl*Exnp1
+Jen32 = Co*(wl**2*Pn + 2*delta*(Pn1 - Pn)/(2*dt) + (Pn1 -2*Pn +Pnm1)/(dt**2))
+Hypn3ov2 = (dt/Du)*(Du/dt)*Hypn1ov2+  (dt/Du)*Kt*Exnp1  -(dt/Du)*Jen32
+Hypn3ov2 = Hypn3ov2 + Psi_hxyN12
+
+
+
+
+
+#c = sym(b.subs(Exnp1,a))
+
+#bob = c.args
+a = Psi_exyN32.expand()
+b = Exnp1.expand()
+e = Pn1.expand()
+f = Jen32.expand()
+c = Hypn3ov2.expand()
+d = Psi_hxyN32.expand()
+
+ 
+#sympy.pprint(Exnp1.expand())
+
+
+#
+#breakpoint()
+#bob = Hypn3ov2[0]
+#sympy.pprint(Exnp1)
+#Hypn3ov2 = Hypn3ov2.subs(Ep1Mat, Exnp1)
+#sympy.pprint(Hypn3ov2.coeffs(Hypn1ov2))
+
+# =c.coeffs()
+#sympy.pprint(c)
+
+
+#sympy.pprint(collect(Hypn3ov2, HMat))
+#bob = sympy.expand(Hypn3ov2)
+#bob2 = sympy.collect(bob, )
+
 
 
 """
@@ -154,7 +257,7 @@ Step 9: Videomaker
 
 
     
-"""
+
 
 blocks = 2
 
@@ -220,7 +323,7 @@ soln = simplify(soln)
 # linsolve to find XnP1
 
 
-
+"""
 
 
 
