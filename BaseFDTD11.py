@@ -13,8 +13,9 @@ import matplotlib.pylab as plt
 from scipy import signal as sign
 import sys 
 from numba import njit as nj
+from numba import jit
 
-
+from numba import int32, float32, int64, float64, boolean, complex128
 def sourceGen(T):
     pulse = np.exp(-(T - 30)*(T-30)/100)
     return pulse
@@ -91,13 +92,12 @@ def SmoothTurnOn(V,P):
 
 ###@nj
 def EmptySpaceCalc(V,P): 
-    V.UpHyMat = np.zeros(P.Nz+1) 
-    V.UpExMat = np.zeros(P.Nz+1)
+    V.UpHyMat = np.ones(P.Nz+1) 
+    V.UpExMat = np.ones(P.Nz+1)
     UpHyBackground = (1/P.CharImp)*P.courantNo
     UpExBackground = P.CharImp*P.courantNo
-    for jl in range(0, P.Nz):  
-        V.UpExMat[jl] =UpExBackground
-        V.UpHyMat[jl] =UpHyBackground
+    V.UpExMat *=UpExBackground
+    V.UpHyMat *=UpHyBackground
  
     return V.UpHyMat, V.UpExMat
 
@@ -147,12 +147,14 @@ def UpdateCoef(V,P):
 
     return UpHyMat, UpExMat
 
-
-
+forlocals ={'Exs' : float64[:], 'counts' : int32}  #Numba need predefined typing
+@jit(nopython=True, locals= forlocals)
 def HyTfSfCorr(V, P, counts, Exs):
-     V.Hy[P.nzsrc-1] -= Exs[counts]#/P.CharImp
-     return V.Hy[P.nzsrc-1]
-
+     V.Hy[P.nzsrc-1] -= Exs[counts]/P.CharImp
+     return V.Hy[P.nzsrc-1]#
+ 
+forlocals2 ={'Hys' : float64[:], 'counts' : int32} 
+@jit(nopython=True, locals= forlocals2)
 def ExTfSfCorr(V,P, counts, Hys):
     V.Ex[P.nzsrc] += Hys[counts]
     return V.Ex[P.nzsrc]
@@ -351,14 +353,14 @@ def CPML_Psi_m_Update(V,P, C_V, C_P):
 @nj
 def CPML_HyUpdate(V,P, C_V, C_P):
     for nz in range(0, P.Nz-2):
-        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]
+        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*(1/P.courantNo)
     return V.Hy
 
 
 @nj
 def CPML_ExUpdate(V,P, C_V, C_P):
     for nz in range(1, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + ((V.Hy[nz]-V.Hy[nz-1])-V.Jx[nz])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#*C_V.den_Exdz[nz]
+        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#V.Jx[nz])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#*C_V.den_Exdz[nz]
     return V.Ex
 
 @nj
@@ -373,7 +375,7 @@ def CPML_PMC(V,P,C_V, C_P):
 def ADE_TempPolCurr(V,P, C_V, C_P):
      for nz in range(1, P.Nz-1):
          V.tempTempVarPol[nz] = V.tempVarPol[nz]
-         V.tempVarPol[nz] = V.Jx[nz] 
+         V.tempVarPol[nz] = V.polarisationCurr[nz] 
          V.tempTempVarE[nz] = V.tempVarE[nz] 
          V.tempVarE[nz] = V.Ex[nz] 
          V.tempTempVarHy[nz] = V.tempVarHy[nz]
@@ -386,13 +388,13 @@ def ADE_TempPolCurr(V,P, C_V, C_P):
          C_V.tempVarPsiHy[nz] = C_V.psi_Hy[nz]
          
      return V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy
- 
-@nj
-def ADE_JxUpdate(V,P, C_V): #timestep t+1/2, FM?
+forlocalsJ ={'coef' : float64, 'V.Jx' : float64[:]} 
+@jit(nopython=True, locals=forlocalsJ)
+def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?
   
    
-    betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+ 0.5*V.gammaE*P.delT)
-    kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
+    #betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+ 0.5*V.gammaE*P.delT)
+    #kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
     
     #selfCo = (2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT)
     
@@ -404,13 +406,14 @@ def ADE_JxUpdate(V,P, C_V): #timestep t+1/2, FM?
     
    # print("types: ", type(matLoc), type(gammaE), type(plas), type(betaE), type(kapE), type(selfCo), type(HCurlCo))
     #print(m1JxNum/m1JxDen, "co ef 1", m2PxNum/m1JxDen, "second coef", m3ExNum/m1JxDen)
+    coef= (1/(P.permit_0*V.plasmaFreqE*V.omega_0E**2))
     for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
-       V.Jx[nz] =( kapE*V.Jx[nz] + betaE*(V.Ex[nz] + V.tempTempVarE[nz]))*C_V.den_Exdz[nz]
+       V.Jx[nz] =coef*(V.omega_0E**2*V.tempVarPol[nz] + (V.gammaE/P.delT)*(V.polarisationCurr[nz]-V.tempVarPol[nz]) + (V.polarisationCurr[nz]-2*V.tempVarPol[nz] +V.tempTempVarPol[nz])/(P.delT**2))#( kapE*V.Jx[nz] + betaE*(V.Ex[nz] + V.tempTempVarE[nz]))*C_V.den_Exdz[nz]
     return V.Jx
     # find paper
 
 @nj
-def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
+def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):   #FIND ADE PAPER!
     
   
     D= (1/P.delT**2)+(V.gammaE/(2*P.delT))
@@ -432,7 +435,8 @@ def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):
 def ADE_HyUpdate(V, P, C_V, C_P):
     
     for nz in range(1, P.Nz-1):
-        V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*(1/P.courantNo)*C_V.den_Hydz[nz]
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*C_V.den_Hydz[nz] 
+        #V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*(1/P.courantNo)#*C_V.den_Hydz[nz]
         #if(np.isnan(V.Hy[nz]) or V.Hy[nz] > 10):
          #    print("Hy IS wrong", V.Hy[nz], nz)
              
@@ -443,7 +447,8 @@ def ADE_MyUpdate():
     
     pass
 
-@nj
+forlocalsAEX= { 'betaE': float64, 'kapE' : float64 }
+@jit(nopython = True,locals=  forlocalsAEX )
 def ADE_ExUpdate(V, P, C_V, C_P): 
     
     
@@ -454,8 +459,8 @@ def ADE_ExUpdate(V, P, C_V, C_P):
    # plas = V.plasmaFreqE*matLoc
     
     
-    betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
-    kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
+    betaE = 0#(0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
+    kapE = 0#(1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
     
     #selfCo = (2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT)
     
@@ -465,8 +470,10 @@ def ADE_ExUpdate(V, P, C_V, C_P):
     for nz in range(1, P.Nz+1):
        # V.tempTempVarE[nz] = V.tempVarE[nz]
         #V.tempVarE[nz] = V.Ex[nz]
-        V.Ex[nz] =((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))*V.Ex[nz] + (V.Hy[nz] - V.Hy[nz-1] -0.5*(1+kapE)*V.Jx[nz])*((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)*C_V.den_Exdz[nz]
+       # V.Ex[nz] =V.Ex[nz] + (V.Hy[nz] - V.Hy[nz-1]])#*(1/P.courantNo)#*((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)*C_V.den_Exdz[nz]
         
+       #((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))* -0.5*(1+kapE)*V.Jx[nz
+       V.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz] - V.Jx[nz]
     return V.Ex
 
 
@@ -496,6 +503,7 @@ def AnalyticalReflectionE(V, P):
     epsDom = (V.omega_0E**2-(2*np.pi*P.freq_in**2) - 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
+    # INTERESTING BUG WITH ARCSIN INVALID VALUE, UNIT TEST 
     mu =1
     imp1 = 1
     imp2 = np.sqrt(mu/np.real(epsilon)+0j)
