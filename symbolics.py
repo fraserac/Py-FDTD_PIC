@@ -40,7 +40,7 @@ Nz = 5
 dz, bmz, cmz, delta, dt, n, np1, np1ov2, np3ov2, nm1, al, bl, cl, Co, wl, bz, az = sym ("Δ_z,b_mz, c_mz,δ, Δ_t,n, n+1, n+1/2, n+3/2, n-1, a_L, b_L, c_L, Co, omega_L, b_z, a_z")
 # bz, az from cpml update
 #al, bl, cl lorentz polarisation
-De, K, Kt, Du, Ex, Hy, Je, P, Psi_exy, Psi_hxy = sym("D_E, K, K^t, D_μ, Ex, Hy, J_e, P, ψ_(exy), ψ_(hxy)", commutative =False)
+sigmaE, sigmaH, De, K, Kt, Du, Ex, Hy, Je, P, Psi_exy, Psi_hxy = sym("σ_E, σ_H, D_E, K, K^t, D_μ, Ex, Hy, J_e, P, ψ_(exy), ψ_(hxy)", commutative =False)
 
 Exnp1 = Ex**np1
 Exn = Ex**n
@@ -51,8 +51,8 @@ Pn = P**n
 Pnm1 = P**nm1
 Jen32 = Je**np3ov2
 Jen12 = Je**np1ov2
-Psi_exyN32 =  Psi_exy**np3ov2
-Psi_exyN12 = Psi_exy**np1ov2
+Psi_exyN1 =  Psi_exy**np1
+Psi_exyN = Psi_exy**n
 Psi_hxyN32 = Psi_hxy**np3ov2
 Psi_hxyN12 = Psi_hxy**np1ov2
 
@@ -76,30 +76,52 @@ Psi_hxyN12 = Psi_hxy**np1ov2
 ## insert psi, write expression for psi, je, P etc then manually collect co-efficients re-arrange to state space form
 # then, convert to MNA form, will SPRIM still work with extension? 
 # co ef of Je called CO
-Psi_exyN32 = bz*Psi_exyN12 + (az)*K*Hypn1ov2 
-Exnp1=  (dt/De)*(De/dt)*Exn - (dt/De)*K*Hypn1ov2 +Psi_exyN32
+Psi_exyN1 = bz*Psi_exyN + (az)*K*Hypn1ov2 
+Exnp1=  ((De/dt + sigmaE/dt)**(-1))*(De/dt- sigmaE/dt)*Exn - ((De/dt + sigmaE/dt)**(-1))*K*Hypn1ov2 +Psi_exyN1
 Pn1 = al*Pn + bl*Pnm1 + cl*Exnp1
 Psi_hxyN32 = bmz*Psi_hxyN12 + cmz*Kt*Exnp1
-Jen32 = Co*(wl**2*Pn + 2*delta*(Pn1 - Pn)/(2*dt) + (Pn1 -2*Pn +Pnm1)/(dt**2))
-Hypn3ov2 = (dt/Du)*(Du/dt)*Hypn1ov2+  (dt/Du)*Kt*Exnp1  -(dt/Du)*Jen32 +Psi_hxyN32
 
-
-
+Hypn3ov2 = (Du/dt + sigmaH/dt)**(-1)*(Du/dt-sigmaH/dt)*Hypn1ov2+  (Du/dt + sigmaH/dt)**(-1)*Kt*Exnp1  -(Du/dt + sigmaH/dt)**(-1)*(Co*(wl**2*Pn + 2*delta*(Pn1 - Pn)/(2*dt) + (Pn1 -2*Pn +Pnm1)/(dt**2))) +Psi_hxyN32
 
 
 
 #c = sym(b.subs(Exnp1,a))
 
 #bob = c.args
-a = Psi_exyN32.expand()
+a = Psi_exyN1.expand()
 b = Exnp1.expand()
 c = Pn1.expand()
 d = Psi_hxyN32.expand()
-e = Jen32.expand()
-f = Hypn3ov2.expand()
+e = Hypn3ov2.expand()
 
+subList = [Psi_exyN, Exn, Psi_hxyN12, Hypn1ov2]
+coeffArr = [a,b,d,e]
 
- 
+def coeffMatGen_Add_obj(subsList, coeffs):
+    sL = len(subsList)
+    cL = len(coeffs)
+    if sL != cL:
+        print("sublist and coeffs not same size.")
+        return 0
+    
+    coefMat = sympy.zeros(sL, cL)
+    #row = np.empty(sL)
+    for hh in range(sL):
+        for i in range(cL):
+           # breakpoint()
+            
+            subArray = np.arange(sL)
+            dels = np.where(subArray == i)
+            subArray = np.delete(subArray, dels)
+            element = coeffs[hh].subs(subsList[i], 1)
+            for jjj in subArray:
+                element = element.subs(subsList[jjj], 0)
+            coefMat[hh,i] = element        
+    return coefMat
+
+coefMat = coeffMatGen_Add_obj(subList, coeffArr)
+sympy.pprint(subList)
+# AFTER TIME STEP ITERATION, EVALUATE PN1 VIA ALPn+blPn-1 + CL*Exn, then find Je, then add it as a source on top of (y = ax + bun), y + Pol = y (over H partition appropriate region) 
 #sympy.pprint(Exnp1.expand())
 
 

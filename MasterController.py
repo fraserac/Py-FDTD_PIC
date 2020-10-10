@@ -1,6 +1,6 @@
- # -*- coding: utf-8 -*-
+  # -*- coding: utf-8 -*-
 """
-Fields controller, this script is the master that guides all the processes,
+Fields controller, this script is the master that controls all the processes,
 calling the field updates and eventually particle updaters and field interpolater
 as well as any memory saving methods like sparse matrices etc.
 BC functions called as well
@@ -23,17 +23,24 @@ import winsound
 import pyttsx3
 from sklearn.linear_model import Ridge
 
-#from numba import njit as nj
-from numba import jitclass as jclass
+from numba import njit as nj
+from numba.experimental import jitclass as jclass
 from numba import int32, float32, int64, float64, boolean
 import time as tim
-from memory_profiler import profile
+#from memory_profiler import profile
 import BulkTest as bt
 import matrixConstruct as matCon
-
-
+from varname import nameof
+import sys
 duration = 1000  # milliseconds
 freq = 300  # Hz
+
+
+"""
+Below, specify typings of jclass members, as numba 
+doesn't use dynamic typing like base python.
+
+"""
 
 specV = [('Nz', int32),              
     ('timeSteps', float32),
@@ -106,9 +113,9 @@ class Variables(object):
         self.epsilon = np.ones(Nz)
         self.mu = np.ones(Nz)
         self.polarisationCurr = np.zeros(Nz)
-        self.plasmaFreqE = 12e9
+        self.plasmaFreqE = 50e9
         self.gammaE = 1e7
-        self.omega_0E= 10e9
+        self.omega_0E= 80e9
         self.tempVarPol =np.zeros(Nz)
         self.tempTempVarPol =np.zeros(Nz)
         self.tempVarE =np.zeros(Nz)
@@ -176,10 +183,13 @@ specP=[('Nz', int32),
     ('pmlWidth', int32),
     ('hEcompsCo', float64),
     ('domainSize', int32), 
-    ('MORmode', boolean)]
+    ('MORmode', boolean), 
+    ('delayMOR', int32)]
+
+
 @jclass(specP)
 class Params(object):
-    def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in):
+    def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in, delayMOR):
         
         self.permit_0 = sci.constants.epsilon_0
         self.permea_0 = sci.constants.mu_0
@@ -208,6 +218,7 @@ class Params(object):
         self.pmlWidth = pmlWidth
         self.domainSize = domainSize
         self.MORmode = MORmode
+        self.delayMOR = delayMOR
         
     def __repr__(self):
         return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
@@ -222,17 +233,19 @@ specCP = [('kappaMax',float32),
           ('sigmaHMax', float64),
           ('sigmaOpt',float64),
           ('alphaMax',float32),]
+
+
 @jclass(specCP)
 class CPML_Params(object):
     def __init__(self, dz):
-        self.kappaMax =10# 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
-        self.r_scale = 4.0 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
-        self.r_a_scale=1.0
+        self.kappaMax =12# 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+        self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
+        self.r_a_scale=1
         self.sigmaEMax=10*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
         self.sigmaHMax =10*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
         self.sigmaOpt  =10*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
     #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
-        self.alphaMax=0.05# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.alphaMax=0.25# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
     
     def __repr__(self):
         return (f'{self.__class__.__name__}')
@@ -312,14 +325,79 @@ class CPML_Variables(object):
     
     def __str__(self):
         return 'Class containing all CPML values that vary throughout a sim' 
+
+
+#CONTROLLER: calls functions for simulation, not hooked up to MOR set up. 
+#Initialises all vars (NOT NECESSARY if instantiating class each time) 
+#BASEFDTD update equations for loop for time stepping, move to numba function integrator
+@nj
+def integrator(V, P, C_V, C_P,Exs, Hys, i, probeReadStart):
     
+    for counts in range(0,P.timeSteps):
+            
+        
+        V.Ex = BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P)
+      #  V.Dx = BaseFDTD11.ADE_DxUpdate(V,P, C_V, C_P)
+       # V.Ex = BaseFDTD11.ADE_ExCreate(V,P, C_V, C_P)
+       # C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
+        #if i == 1:
+         #    V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
+            # V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
+            # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)  
+        
+        
+        
+        V.Hy[P.nzsrc-1] = BaseFDTD11.HyTfSfCorr(V,P, counts, Exs)
+        V.Ex[P.nzsrc] = BaseFDTD11.ExTfSfCorr(V,P, counts, Hys)
+        
+        V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
+       # C_V.psi_Hy, V.Hy  = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
+        
+       
+        #C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
+           
+        V.Ex_History[counts] = V.Ex
+        #breakpoint()
+        #print(np.max(V.Ex),"Ex max")
+        #Psi_Ex_History[counts] = C_V.psi_Ex
+        #V.Psi_e_History[counts] = C_V.psi_Ex
+        #V.Hy_History[counts] = V.Hy
+        #V.Jx_History[counts] = V.Jx
+        #V.Dx_History[counts] = V.Dx
+        #V.polCurr_History[counts] = V.polarisationCurr
+               
+        if i ==0:
+             if counts <= P.timeSteps-1:
+                 if counts >= probeReadStart:
+               # print("x1colbe")
+                    V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] 
+            
+        elif i ==1:
+             if counts <= P.timeSteps-1:
+                  if counts >= probeReadStart:
+                     V.x1ColAf[counts] = V.Ex_History[counts][P.x2Loc] 
+                     V.x1Hy[counts] = V.Hy[P.x2Loc]
+                     V.x1Jx[counts] = V.Jx[P.materialFrontEdge +10]
+                     C_V.psi_Ex_Probe[counts] = C_V.psi_Ex[P.x2Loc]
+                     C_V.psi_Hy_Probe[counts] = C_V.psi_Hy[P.x2Loc]
+                     
+                     V.x1ExOld[counts] = V.tempTempVarE[P.x2Loc]
+                     V.x1HyOld[counts] = V.tempTempVarHy[P.x2Loc]
+                     V.x1JxOld[counts] = V.tempTempVarJx[P.x2Loc]
+                     C_V.psi_Ex_Old[counts] = C_V.tempTempVarPsiEx[P.x2Loc]
+                     C_V.psi_Hy_Old[counts] = C_V.tempTempVarPsiEx[P.x2Loc]
+ 
+    
+    return V.Ex, V.Hy,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
+
 
 def Controller(V, P, C_V, C_P,Exs, Hys):
     probeReadStart = int(P.timeSteps*0.05)
     V.x1ColBe = np.zeros(P.timeSteps)
     V.x1ColAf = np.zeros(P.timeSteps)
+    Exs = np.asarray(Exs)
+    Hys = np.asarray(Hys)
     for i in range(0, 2):
-
         V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
         
         V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)   
@@ -333,74 +411,28 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
         C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc = BaseFDTD11.CPML_Ex_Update_Coef(V,P, C_V, C_P)
         C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3 = BaseFDTD11.CPML_Hy_Update_Coef(V,P, C_V, C_P)
         C_V.den_Exdz, C_V.den_Hydz = BaseFDTD11.denominators(V, P, C_V, C_P)
-        gStab.vonNeumannAnalysis(V,P,C_V,C_P)
+        #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
         
+        
+        
+        V.Ex, V.Hy,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf = integrator(V, P, C_V, C_P,Exs, Hys, i, probeReadStart)
                
-        for counts in range(0,P.timeSteps):
-               
-               V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-               C_V.psi_Hy, V.Hy  = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
-               
-               
-               V.Hy[P.nzsrc-1] = BaseFDTD11.HyTfSfCorr(V,P, counts, Exs)
-               V.Ex[P.nzsrc] = BaseFDTD11.ExTfSfCorr(V,P, counts, Hys)
-               if i == 1:
-                     V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-                     V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V)
-               V.Ex = BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P)
-              
-               C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-               
-               
-               
-               
-               V.Ex_History[counts] = V.Ex
-               #breakpoint()
-               #print(np.max(V.Ex),"Ex max")
-               #Psi_Ex_History[counts] = C_V.psi_Ex
-               #V.Psi_e_History[counts] = C_V.psi_Ex
-               #V.Hy_History[counts] = V.Hy
-               #V.Jx_History[counts] = V.Jx
-               #V.Dx_History[counts] = V.Dx
-               #V.polCurr_History[counts] = V.polarisationCurr
-               
-               if i ==0:
-                    if counts <= P.timeSteps-1:
-                        if counts >= probeReadStart:
-                      # print("x1colbe")
-                           V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] 
-                   
-               elif i ==1:
-                    if counts <= P.timeSteps-1:
-                         if counts >= probeReadStart:
-                            V.x1ColAf[counts] = V.Ex_History[counts][P.x2Loc] 
-                            V.x1Hy[counts] = V.Hy[P.x2Loc]
-                            V.x1Jx[counts] = V.Jx[P.materialFrontEdge +10]
-                            C_V.psi_Ex_Probe[counts] = C_V.psi_Ex[P.x2Loc]
-                            C_V.psi_Hy_Probe[counts] = C_V.psi_Hy[P.x2Loc]
-                            
-                            V.x1ExOld[counts] = V.tempTempVarE[P.x2Loc]
-                            V.x1HyOld[counts] = V.tempTempVarHy[P.x2Loc]
-                            V.x1JxOld[counts] = V.tempTempVarJx[P.x2Loc]
-                            C_V.psi_Ex_Old[counts] = C_V.tempTempVarPsiEx[P.x2Loc]
-                            C_V.psi_Hy_Old[counts] = C_V.tempTempVarPsiEx[P.x2Loc]
+        
     return V, P, C_V, C_P, Exs, Hys
-
-# calc nz and timesteps from domain size and freq 
-    #keep same domain once it has been setup, so matsetup doesn't need to be called during run.
 
  
 #######################################
 ###############   VARIABLES AND CALLS FOR PROGRAM INITIATION
 #########
 
-MORmode = True   
-domainSize =2500
-freq_in =1e9
-# using matsetup anyway, feed in from here?
-setupReturn = []*20
-setupReturn=envDef.envSetup(freq_in, domainSize, 550, 600)
-P= Params(*setupReturn, MORmode, domainSize, freq_in) #be carefu5 with tuple 
+MORmode = False
+domainSize=1200
+freq_in =2e9
+delayMOR =10
+noOfEnvOuts = 20
+setupReturn = []*noOfEnvOuts
+setupReturn =envDef.envSetup(freq_in, domainSize, 2000, 2050)   # this function returns a list with all evaluated model parameters
+P= Params(*setupReturn, MORmode, domainSize, freq_in, delayMOR) #be careful with tuple, check ordering of parameters 
 V=Variables(P.Nz, P.timeSteps)
 C_P = CPML_Params(P.dz)
 C_V = CPML_Variables(P.Nz, P.timeSteps)
@@ -536,14 +568,14 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
             toc = tim.perf_counter()
             print(toc-tic, "time for results to run")
             #plotter(xAxis, V.Ex_History[20], yAxisLim =2)  
-           # print(1-freqDomYAxisRef, "measured ref")
+            print(1-freqDomYAxisRef, "measured ref")
             print(dispVel, realV,"numerical phase velocity, vs real velocity" )
             print(abs(freqDomYAxis2AnalRef), "analytical ref")
             VideoMaker(P, V)
         winsound.Beep(freq, duration)  
         engine = pyttsx3.init()
         engine.say('beep')
-        engine.runAndWait()
+        engine.runAndWait() 
         
         
         
@@ -569,16 +601,19 @@ def LoopedSim(V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep",
         De, Dh, K, Kt = matCon.blockBuilder(V, P, C_V, C_P)
         R, F = matCon.RandFBuild(P, De, Dh, K, Kt)
        # A, blocks =matCon.ABuild(A, P, De, Dh, K, Kt)
-        print("(R+F)^-1*(R-F), stability")
-        toInv = R.todense()+F.todense()
-        inverse = np.linalg.inv(toInv)
-        inverse = sparse.csc_matrix(inverse)
-        matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
+        #print("(R+F)^-1*(R-F), stability")
+       
+        
+       # toInv = R.todense()+F.todense()
+        #inverse = np.linalg.inv(toInv)
+        #inverse = sparse.csc_matrix(inverse)
+        
+        #matCon.vonNeumannAnalysisMOR(V,P,C_V,C_P, inverse@(R-F))
        
         
         Xn = matCon.BasisVector(V, P, C_V, C_P)
-        UnP1A, UnP1B, B = matCon.BAndSourceVector(V, P, C_V, C_P)
-        V.Ex, V.Ex_History, V.Hy, UnP1 = matCon.solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P)
+        UnP1A, UnP1B = matCon.SourceVector(V, P, C_V, C_P)
+        V.Ex, V.Ex_History, V.Hy, UnP1 = matCon.solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, K,  Kt, De, Dh)
         toc = tim.perf_counter()
         print("Time taken with sparse matrix: ", toc-tic)
         
@@ -603,6 +638,12 @@ print(toc-tic, "Time for Looped sim to run non-loop")
 #print(np.max(Ex_History), "max history")
 
 #t =np.arange(0,len(V.x1ColBe))
+
+
+
+
+
+
 
 ### EXPOSING VARS TO INSPECTOR
 UpHyMat = V.UpHyMat
