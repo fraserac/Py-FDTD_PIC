@@ -12,14 +12,17 @@ import cv2
 import natsort
 import numpy as np
 import scipy as sci
+
 import matplotlib.pylab as plt
+
 
 
 def VideoMaker(P,V):
     fig, ax = plt.subplots()
-    interval =20
+    interval =15
     my_path = os.getcwd() 
     newDir = "Ex fields"
+   
     
     path = os.path.join(my_path, newDir)
     
@@ -46,15 +49,16 @@ def VideoMaker(P,V):
     for i in range(0, P.timeSteps, interval):
         print(str.format('{0:.2f}', (100/(P.timeSteps/(i+1)))),"% complete")
         ax.clear()
-        ax.plot(np.real(V.Ex_History[i]))    
-        plt.title("Ex")
-        ax.set_xlim(0, P.Nz)
+        ax.set_xlim(0, P.Nz*1.2)
         ax.set_ylim(-2,2)
         ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
         ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
         ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
         ax.axvspan(P.x1Loc, P.x1Loc+2 , alpha=1, color='black')
         ax.axvspan(P.x2Loc, P.x2Loc+2 , alpha=1, color='red')
+        ax.plot(np.real(V.Ex_History[i]))    
+        stringTit = "Ex @ ", str(P.delT*i), "seconds"
+        plt.title(stringTit)
         plt.savefig(path + "/" + str(i) + ".png")
     
     

@@ -27,20 +27,20 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     lamMin = (c0/freq_in)
     
     #print("LamMin ", P.lamMin)
-    Nlam =140
+    Nlam= 30
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)*0.3#0.95/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)#/(P.c0*np.sqrt(1/(P.dz**2)))
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
     #P.delT = ma.floor(P.delT* multiplier) / multiplier
     #CharImp =np.sqrt(sci.mu_0)/np.sqrt(sci.epsilon_0)
     period = 1/freq_in
     courantNo = (c0*delT)/dz
-    if courantNo > 1.01 or courantNo <0:
+    if courantNo > 3 or courantNo <0:
         print(courantNo, "courantNo is unstable")
         sys.exit()
-    pmlWidth = 3*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
+    pmlWidth = 2*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
     #print('pmlWidth = ' , P.pmlWidth)
     if (pmlWidth >= 12000):
         print('pmlWidth too big', pmlWidth)
@@ -57,7 +57,8 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         
         
         
-        #
+    if minim ==  maxim:
+        minim-=1#
     for N in range(minim,maxim):
         
         check = (freq_in*N)/(1/delT)
@@ -99,7 +100,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         sys.exit()
     t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
     
-    nzsrcFromPml = 6*int(lamMin/dz)
+    nzsrcFromPml = 2*int(lamMin/dz)
     if nzsrcFromPml >= domainSize*0.65:
         print(nzsrcFromPml, 'src is too far into domain')
         sys.exit()
@@ -112,7 +113,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 10*int(lamMin/dz)
+    MaterialDistFromPml = 5*int(lamMin/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1
