@@ -73,7 +73,7 @@ def ExampleArnoldi(A, v0, k): # Issue with [0,0]
     vt = np.ascontiguousarray(vt)
    # breakpoint()
     for m in range(k):
-        if m%50 ==0:
+        if m%250 ==0:
             print(" this far through arnoldi: ", m, "/", k)
         vt = A@v0[ :, m]
         vt = np.ascontiguousarray(vt)
@@ -200,22 +200,26 @@ Build De, Dh
 """
 def singularVDPertPreExpan(P, De, Dh, K):
     #check sparseness make sparse
-   
+    #APPARENTLY 2 WORKED WITH NONE OF THE AMENDMENTS
     In = np.identity(len(De))
     print("svd pert, Dh, De cond: ", np.linalg.cond(Dh), np.linalg.cond(De))
     
-   # breakpoint()
     Des = li.sqrtm(De)
     Dhs = li.sqrtm(Dh)
-    DeI = np.linalg.pinv(Des)   # CHECK THIS, MAY NEED IMPROVEMENT
-    DhI = np.linalg.pinv(Dhs)
-    
+    DeI = luInvert(Des, "De")   # CHECK THIS, MAY NEED IMPROVEMENT
+    DhI = luInvert(Dhs, "Dh")
+   
     svdRV, svdS, svdLV = np.linalg.svd(DeI@K@DhI)
-    gam = 0.9999
-    singBound = 2/P.delT
+    gam = 0.999
+   
+    singBound =2
+    counter = 0
     for i in range(len(svdS)):
+        
         if svdS[i] > (gam*singBound):
+            counter+=1
             svdS[i]  = gam*singBound
+    print(counter, " Singular values perturbed out of: ", len(svdS))
     svdSI = np.diag(svdS)               
     KnearlyPert = svdRV@svdSI@svdLV
     Kpert = Des@KnearlyPert@Dhs
@@ -287,13 +291,13 @@ def luInvert(a, name = "Null"):
     
     In=np.identity(length)
     test = In
-    condi= np.linalg.cond(a.todense())
-    print("LUinvert: ", name)
-    print("condition of input: ", condi)
-    if condi > 5:
-        print("condition is bad! Attempting jacobian preconditioner... ")
-        del test
-        test = np.linalg.inv(np.diag(np.diag(a.todense())))
+   # condi= np.linalg.cond(a.todense())
+   # print("LUinvert: ", name)
+  #  print("condition of input: ", condi)
+#    if condi > 5:
+       # print("condition is bad! Attempting jacobian preconditioner... ")
+       # del test
+      #  test = np.linalg.inv(np.diag(np.diag(a.todense())))
         #result = np.linalg.cond(test@a.todense())  # try further preconditioners
         #print("result: ", result)
        # if result<condi:
@@ -312,24 +316,25 @@ def luInvert(a, name = "Null"):
      
     
     print("SPiLU completed")
-   
+    prod = np.max(a@M)
     #M = sparse.csc_matrix(M)
     if sparse.issparse(a) ==True:
         a = a.todense()
     check = np.allclose(a@M, np.identity(length), atol = 1e-3)
    # breakpoint()
-    if check == False:
+    if check == False and np.isclose(prod, 1, atol = 1e-3) ==False:
         print("not the inverse! from inv", check)
-        print((a@M)[0,0], " First element of product")
+        print((np.real(a@M))[0,0], " First element of product")
+        print(prod  ,"max value of inverse product")
         M = np.linalg.pinv(a)
     #breakpoint()
     if np.allclose(M@a, np.identity(len(a))):
         
         print("not the inverse! from pinv", check)
-        print((a@M)[0,0], " First element of product")
+        print((np.real(a@M))[0,0], " First element of product")
        #sys.exit() 
         
-    return M
+    return np.real(M)
 
 
 def smooth( x,window_len=5,window='hanning'):
@@ -431,10 +436,10 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
     summer = (R+F)
     winter = (R-F)
     tic = time.perf_counter()
-    summerInv = luInvert(summer)
+    summerInv = np.linalg.inv(summer.todense())
     toc = time.perf_counter()
     ### CONDITION NUMBER EFFECTS ACCURACY OF INVERSION!
-    print("LUinvert time: ", toc-tic)
+    print("invert time: ", toc-tic)
     print("conditions numbers of summer, winter: ", np.linalg.cond(summer.todense()), np.linalg.cond(winter.todense()))
    
     #summer = vonNeumannAnalysisMOR(V, P, C_V, C_P, summer, "summer")
@@ -482,7 +487,7 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
    # v2 = v2.astype(np.complex128)
     v0, RR = np.linalg.qr(v0)   # if matix is complex returns unitary, normalise it...
     #v0 = v0/np.linalg.norm(v0)
-    print(type(v0))
+    #print(type(v0))
     #print(type(v2))
     #v2, R2 = np.linalg.qr(v2)
     #v2 = v2/np.linalg.norm(v2)
@@ -508,7 +513,7 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
     #V_sp, R = np.linalg.qr(V_sp)
     #V_sp = V_sp/np.linalg.norm(V_sp)
    
-    print(np.linalg.matrix_rank(V_sp, tol =1e-4),"/", V_sp.shape[1], "MATRIX RANK ")
+    #print(np.linalg.matrix_rank(V_sp, tol =1e-4),"/", V_sp.shape[1], "MATRIX RANK ")
    
     #V_sp = np.block([np.real(V_sp[:int(len(V_sp)/2)]), np.imag(V_sp[int(len(V_sp)/2):])])
     toc = time.perf_counter()
@@ -523,57 +528,6 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
         print("shapes of blocks for SPRIM partition not the same: ", V_sp_UL.shape, V_sp_UR.shape, V_sp_LL.shape, V_sp_LR.shape)
         sys.exit()
     #
-    """
-    bob = V_sp.T@summer@V_sp
-    bob2 = V_sp@bob@V_sp.T
-    avgDiag = np.average(np.diag(bob2))
-    for i in range(bob2.shape[0]):
-        for j in range(bob2.shape[1]):
-            if abs(bob2[i,j]) <= abs(avgDiag)/5:
-                bob2[i,j] = 0
-                
-    factor = np.average(np.diag(summer.todense()) /np.average(np.diag(bob2)))  
-    bob2 = bob2*factor
-    bob3 = np.real(bob2)
-  #  breakpoint()
-    
-    
-    V_sp = np.hstack((np.real(V_sp), np.imag(V_sp)))
-   # modify = 1/V_sp[0,0]
-    print("V_sp: ", V_sp[:4,:4])
-   # V_sp*= modify
-    #W_sp = np.hstack((np.real(W_sp), np.imag(W_sp)))
-    
-    V_sp_UL = V_sp[:int(len(V_sp)/2),:k]
-    V_sp_UR = np.zeros((int(len(V_sp)/2), k))
-    V_sp_LL = np.zeros((int(len(V_sp)/2), k))
-    V_sp_LR = V_sp[int(len(V_sp)/2):,:k]
-    V_sp = np.block([[V_sp_UL, V_sp_UR],[V_sp_LL, V_sp_LR]])
-    
-    if V_sp_UL.shape !=V_sp_UR.shape or V_sp_LL.shape != V_sp_LR.shape or V_sp_LL.shape != V_sp_UR .shape:
-        print("shapes of blocks for SPRIM partition not the same: ", V_sp_UL.shape, V_sp_UR.shape, V_sp_LL.shape, V_sp_LR.shape)
-        sys.exit()
-    if V_sp.shape[0] != P.Nz+2:
-        print(V_sp.shape, " V_sp shape", P.Nz, " P.Nz")
-   
-    #check structure preservation
-    
-    # take top half of V_sp and W_sp
-    print("Dimensions of V_sp should match Xn, Shape V vs Xn: ", V_sp.shape, Xn.shape)
-    #breakpoint()
-    #SPRIM PARTITION:
-    #V_sp = 
-    
-   # breakpoint()
-    #V_sp, R = np.linalg.qr(V_sp)#
-
-   # print("Performing Orthonormal tests")
-   # check = np.allclose(V_sp.T @ V_sp, np.eye(V_sp.shape[1]), rtol =1e-1)
-   # print(" ortho check: ", check)
-    """  
-    V_spt = V_sp.T
-   # breakpoint()
-    
     
     
     
@@ -586,46 +540,37 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
     Vnorm = np.linalg.norm(V_sp)
     V_sp, rrr = np.linalg.qr(V_sp)
     V_sp *= Vnorm
+    Kop_pert = singularVDPertPreExpan(P, De, Dh, Kop)
+    R = R.todense()
+    R[:int(len(R)/2),int(len(R)/2):] = Kop_pert
+    R[len(Kop_pert):,:len(Kop_pert)] = Kop_pert.T
     R_red = V_sp.T@R@V_sp
     F_red = V_sp.T@F@V_sp
-    Kop_red_R = R_red[:int(len(R_red)/2),int(len(R_red)/2):]
-    De_red_R = R_red[:int(len(R_red)/2),:int(len(R_red)/2)]
-    Dh_red_R = R_red[int(len(R_red)/2):,int(len(R_red)/2):]#V_sp_LR.T@Dh@V_sp_LR
     
-    Kop_red_pert = singularVDPertPreExpan(P, De_red_R, Dh_red_R, Kop_red_R)
-    R_red[len(Kop_red_R):,:len(Kop_red_R)]= Kop_red_pert.T
-    R_red[:len(Kop_red_R),len(Kop_red_R):] = Kop_red_pert
+    #Kop_red_R = R_red[:int(len(R_red)/2),int(len(R_red)/2):]
+   # De_red_R = R_red[:int(len(R_red)/2),:int(len(R_red)/2)]
+  #  Dh_red_R = R_red[int(len(R_red)/2):,int(len(R_red)/2):]#V_sp_LR.T@Dh@V_sp_LR
+    
+   
+   # Kop_red_pert = V_sp_UL.T@Kop_pert@V_sp_UL
+    #R_red[len(Kop_red_R):,:len(Kop_red_R)]= Kop_red_pert.T
+    #R_red[:len(Kop_red_R),len(Kop_red_R):] = Kop_red_pert
   #  R_red[]
     # structure preservation preserves algebraic operations?
+    """
     
-    
-    
+    #H = ((R_red+F_red)@(R_red-F_red))
+    H, HeigValsDiag, HeigVecsInv, HeigVecs = eigenvalueDecomp(H=[], R_red = R_red, F_red = F_red,  name = "winter/summer")
+    # H is new update
+    """
+    R_red = np.real(R_red)
+    F_red = np.real(F_red)
     XnP1_red =  V_sp.T@XnP1
     winter_red = R_red-F_red
     summer_red = R_red + F_red
     summerJac = np.linalg.pinv(np.diag(np.diag(summer_red)))
     print("shape winter: ", winter.shape)
-    #sumJac = np.linalg.inv(np.diag(np.diag(summer_red)))
-    ## summer_red is badly conditioned?
-    #winter_red = V_spt@winter@V_sp
-    #summer_red = V_spt@summer@V_sp
-    #A_red = sparse.csc_matrix(A_red)
-    #if (sparse.issparse(A_red)):
-      #  A_red = A_red.todense()
-    #print("Eigenvalue decomp...")
-    #breakpoint()
-    #winter_red= np.real(eigenvalueDecomp(winter_red)) 
-    #summer_red  =np.real(eigenvalueDecomp(summer_red))
-    
-    #AA, BB, CC, DD= eigenvalueDecomp(summer_red)
-    # Inv AA @ summer_red should give I?
-    #summer_red = AA@summer_red
-    #AA, BB, CC, DD= eigenvalueDecomp(winter_red)
-    #winter_red = AA@winter_red
-    #check shapes of projection matrices
-    #print("condition numbers reduced after preconditioning: ", np.linalg.cond(sumJac@summer_red), np.linalg.cond(winter_red))
-    #print("V_spt shape: ", V_spt.shape)
-   # breakpoint() 
+    winter_red_inv = luInvert(winter_red)
     wl= len(winter_red)
     winter_red = sparse.csc_matrix(winter_red)
   #  summer_red_inv = luInvert(summer_red, "summer_red")
@@ -648,6 +593,8 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
     lam = lambda x: Spla.solve(x)
     if sparse.issparse(summer_red):
         summer_red = summer_red.todense()
+        
+    summ_red_sp = sparse.csc_matrix(summer_red)
          
     MM= sparse.linalg.LinearOperator(summer_red.shape, lam)
     for jj in range(0,P.timeSteps):
@@ -664,7 +611,7 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
         #    print("B is wrong shape")
            # sys.exit()
         
-       # UnP1A[:] =  ((Hys[jj])/P.courantNo)*P.CharImp
+        UnP1A[:] =  ((Hys[jj])/P.courantNo)*(1/P.CharImp)
         UnP1B[:] = ((Exs[jj])/P.courantNo)
         UnP1 = np.block([UnP1A, UnP1B])
         
@@ -687,7 +634,7 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
            # breakpoint()
             XnP1_red = XnP1_red.reshape(len(XnP1_red), 1)
             XnP1_red = sparse.csc_matrix(XnP1_red)
-            #XnP1_red = summer_red_inv_spar@(winter_red@XnP1_red +B_red@UnP1_red)
+           # XnP1_red = H@(XnP1_red +winter_red_inv@B_red@UnP1_red)
             #breakpoint()
             y1 = winter_red@XnP1_red +  B_red@UnP1_red
            #y1Full = V_spt@y1*100
@@ -696,15 +643,17 @@ def solnDenecker(R, F, A, UnP1A, UnP1B, Xn, V, P, C_V, C_P, Kop, Kopt, De, Dh, p
            # print("y shape if first before solve: " ,y.shape)
             #XnP1 = A@XnP1 + B@UnP1
             #breakpoint()
-            y1 = sparse.csr_matrix(y1)
+            #y1 = sparse.csr_matrix(y1)
            # breakpoint()
            # XnP1_red = summer_red_inv@y1
            
             #breakpoint()
-            
+            if sparse.issparse(XnP1_red):
+                 XnP1_red = XnP1_red.todense()
            # print("shapes of y1, summer_red: ", y1.shape, summer_red.shape)
-           
-            XnP1_red, info = sparse.linalg.gmres(summer_red, y1.todense(), x0=XnP1_red.todense(), atol=1e-4, M = MM, maxiter = 250)
+            
+            
+            XnP1_red, info = sparse.linalg.bicgstab(summ_red_sp, y1, x0=XnP1_red, atol=1e-3, M = MM, maxiter = 200)
             if info != 0:
                 print("iterations: ", info)
             #fig, ax = plt.subplots()
@@ -955,12 +904,19 @@ def ArnoldiProcess(A, Q, k):
         sys.exit()
     return Q, H[:-1,:], k
 
-def eigenvalueDecomp(H):   # takes in reduced matrix
-
+def eigenvalueDecomp(H, R_red = [], F_red =[], name = "null"):   # takes in reduced matrix
+    if R_red !=[] and F_red != []:
+        H = luInvert(R_red+F_red)@(R_red-F_red)
+        H2 = H
     if sparse.issparse(H): 
         H = H.todense()
     if np.iscomplex(H.any()):
         print("Input to Eigval decomp is complex.")
+    normCheck = np.linalg.norm(H)
+    if normCheck != 1:
+        print("Norm: ", normCheck)
+        H= H/normCheck
+    # check is input is square matrix or no eigenvalue decomp
     HeigVals = li.eigvals(H)
     #breakpoint()
     HeigVecs =li.eig(H)[1] #default right vec, columns are eigenvectors associated with each matching eigenval
@@ -978,21 +934,35 @@ def eigenvalueDecomp(H):   # takes in reduced matrix
     
     HeigVecsInv=luInvert(HeigVecs, " eigenval decomp")
     print("matrices inverted")
-    check = np.allclose(HeigVecsInv@HeigVecs, np.identity(len(HeigVecs)), atol = 1e-2)
+    check = np.allclose(HeigVecsInv@HeigVecs, np.identity(len(HeigVecs)), atol = 1e-3)
     if check ==False:
-        print("Inversion incorrect! Using pseudoinverse")
-    HeigVecsInv = np.linalg.pinv(HeigVecs)
+        print("Inversion incorrect! Using numpy inverse")
+    HeigVecsInv = np.linalg.inv(HeigVecs)
     shrinkFactor = 0.999
     
     
     #Check sparsity, size etc 
     for i in range(len(HeigVals)):
         if abs(HeigVals[i]) >= 1:
+            print("Unstable eigenval!: ", abs(HeigVals[i]))
             HeigVals[i] = (shrinkFactor*HeigVals[i])/abs(HeigVals[i])
+   
+    
+   
     HeigValsDiag = np.diag(HeigVals)
 
     H1 = HeigVecs@HeigValsDiag
     H = H1@HeigVecsInv
+    
+    #H = H*normCheck
+    print("maximum diff H, H2: ", np.max(H2-H))
+    ## FOR R AND F:
+    #if name == "winter/summer":
+      
+      #summer_red = luInvert(l, "eigenval decomp")
+      
+     # return R_red, F_red
+    
     #HVecs @ Hvalspert @HVecs^-1#
     return H, HeigValsDiag, HeigVecsInv, HeigVecs
     

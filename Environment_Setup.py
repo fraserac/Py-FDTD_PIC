@@ -27,7 +27,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     lamMin = (c0/freq_in)
     
     #print("LamMin ", P.lamMin)
-    Nlam= 30
+    Nlam=50
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
     delT = (dz/c0)#/(P.c0*np.sqrt(1/(P.dz**2)))
@@ -40,7 +40,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     if courantNo > 3 or courantNo <0:
         print(courantNo, "courantNo is unstable")
         sys.exit()
-    pmlWidth = 2*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
+    pmlWidth = 5*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
     #print('pmlWidth = ' , P.pmlWidth)
     if (pmlWidth >= 12000):
         print('pmlWidth too big', pmlWidth)

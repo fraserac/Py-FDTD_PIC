@@ -186,14 +186,18 @@ def CPML_FieldInit(V,P, C_V, C_P):
 def CPML_ScalingCalc(V, P, C_V, C_P):
     jj=P.pmlWidth
     jjj = P.pmlWidth-1
+    
+    #CPML PARAMETER OPTIMIZATION IN FDTD MODELING OF IMPULSIVE SOURCE 
+    
+    #scaling cpml parameters from this paper, n = pmlwidth-nz1
     for nz in range(P.Nz):
-        nz1= nz+1
+        nz1=P.lamMin*0.5
         if (nz1 <=P.pmlWidth): 
-            C_V.kappa_Ex[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz1)/(P.pmlWidth-1))**C_P.r_scale
-            C_V.sigma_Ex[nz] = C_P.sigmaOpt*((P.pmlWidth - nz1)/(P.pmlWidth-1))**C_P.r_scale   
-            C_V.alpha_Ex[nz] = C_P.alphaMax*(nz1/(P.pmlWidth-1))**C_P.r_a_scale 
+            C_V.kappa_Ex[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz1)/(P.pmlWidth))**C_P.r_scale
+            C_V.sigma_Ex[nz] = C_P.sigmaOpt*((P.pmlWidth - nz1)/(P.pmlWidth))**C_P.r_scale   
+            C_V.alpha_Ex[nz] = C_P.alphaMax*(nz1/(P.pmlWidth))**C_P.r_a_scale 
 
-        elif nz >= P.Nz+2 -(P.pmlWidth):
+        elif nz >= P.Nz+2 -(P.pmlWidth):  # Mirrored scaling on opposite pml
             C_V.kappa_Ex[nz] = C_V.kappa_Ex[jj]
             C_V.sigma_Ex[nz] = C_V.sigma_Ex[jj]
             C_V.alpha_Ex[nz] = C_V.alpha_Ex[jj]
@@ -205,9 +209,9 @@ def CPML_ScalingCalc(V, P, C_V, C_P):
             C_V.alpha_Ex[nz] = 0
 
         if (nz1 <=P.pmlWidth-1):
-            C_V.kappa_Hy[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz1-0.5)/(P.pmlWidth-1))**C_P.r_scale
-            C_V.sigma_Hy[nz] = C_P.sigmaOpt*((P.pmlWidth -nz1-0.5)/(P.pmlWidth-1))**C_P.r_scale   #np.abs(((C_P.sigmaEMax)*(np.abs(nz -0.75)/P.pmlWidth)**(C_P.r_scale))*C_P.sigmaHMax)
-            C_V.alpha_Hy[nz] = C_P.alphaMax*((nz1-0.5)/(P.pmlWidth-1))**C_P.r_a_scale#np.abs(((1)*(1-(counter)/P.pmlWidth)**(C_P.r_a_scale))*C_P.alphaMax)
+            C_V.kappa_Hy[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz1)/(P.pmlWidth))**C_P.r_scale
+            C_V.sigma_Hy[nz] = C_P.sigmaOpt*((P.pmlWidth -nz1)/(P.pmlWidth))**C_P.r_scale   #np.abs(((C_P.sigmaEMax)*(np.abs(nz -0.75)/P.pmlWidth)**(C_P.r_scale))*C_P.sigmaHMax)
+            C_V.alpha_Hy[nz] = C_P.alphaMax*((nz1)/(P.pmlWidth))**C_P.r_a_scale#np.abs(((1)*(1-(counter)/P.pmlWidth)**(C_P.r_a_scale))*C_P.alphaMax)
             
         
         elif nz >= P.Nz +2 - P.pmlWidth:
@@ -224,12 +228,12 @@ def CPML_ScalingCalc(V, P, C_V, C_P):
 
 
 def CPML_Ex_RC_Define(V, P, C_V, C_P):
-    window = sign.hann(P.Nz+1)
+    #window = sign.hann(P.Nz+1)
     jj = P.pmlWidth-1
     jjj =P.pmlWidth-1
     for nz in range(0, P.Nz):
         if(nz <=P.pmlWidth-1):
-            C_V.beX[nz] = np.exp(-((C_V.sigma_Ex[nz]*P.delT/C_V.kappa_Ex[nz])+((C_V.alpha_Ex[nz]*P.delT)/P.permit_0)))
+            C_V.beX[nz] = np.exp(-((C_V.sigma_Ex[nz]*P.delT/C_V.kappa_Ex[nz])+((C_V.alpha_Ex[nz]*P.delT)/P.permit_0))) 
 
         elif nz >= P.Nz+2 -P.pmlWidth:
             C_V.beX[nz] = np.exp(-((C_V.sigma_Ex[nz]*P.delT/C_V.kappa_Ex[nz])+((C_V.alpha_Ex[nz]*P.delT)/P.permit_0)))
@@ -284,7 +288,14 @@ def CPML_Ex_Update_Coef(V,P, C_V, C_P):
     kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
     a= ((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))
     b =  ((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)
-    for nz in range(0, P.Nz-1):
+    #breakpoint()
+    for nz in range(0, P.pmlWidth):
+        C_V.eLoss_CPML[nz] = (C_V.sigma_Ex[nz]*P.delT)/(2*P.permit_0)
+        
+        C_V.Ca[nz] = a
+        C_V.Cb[nz] = b#V.UpExHcompsCo[nz]*V.UpExMat[nz]
+        C_V.Cc[nz] = P.delT/((1+C_V.eLoss_CPML[nz])*P.permit_0)
+    for nz in range(P.Nz, P.Nz+2-P.pmlWidth, -1):
         C_V.eLoss_CPML[nz] = (C_V.sigma_Ex[nz]*P.delT)/(2*P.permit_0)
         
         C_V.Ca[nz] = a
@@ -294,7 +305,11 @@ def CPML_Ex_Update_Coef(V,P, C_V, C_P):
 
 @nj
 def CPML_Hy_Update_Coef(V,P, C_V, C_P):
-    for nz in range(0, P.Nz-2):
+    for nz in range(0, P.pmlWidth):  # Some of these could be redundant check this 
+        C_V.C1[nz] =1
+        C_V.C2[nz] = -P.delT/P.permea_0
+        C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
+    for nz in range(P.Nz+1, P.Nz+2-P.pmlWidth, -1):
         C_V.C1[nz] =1
         C_V.C2[nz] = -P.delT/P.permea_0
         C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
@@ -327,10 +342,14 @@ def denominators(V, P, C_V, C_P):
 
 @nj
 def CPML_Psi_e_Update(V,P, C_V, C_P):  
-    for nz in range(1, P.pmlWidth+1): 
+    for nz in range(0, P.pmlWidth+1): 
         C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
-        V.Ex[nz] = V.Ex[nz] + 10*C_V.Cb[nz]*C_V.psi_Ex[nz]
-    #nz=0
+        V.Ex[nz] = V.Ex[nz]- C_V.Cb[nz]*C_V.psi_Ex[nz]
+    #nz=
+
+    for nz in range(P.Nz, P.Nz-P.pmlWidth, -1):
+        C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
+        V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz]
    
     
     return C_V.psi_Ex, V.Ex 
@@ -339,10 +358,11 @@ def CPML_Psi_e_Update(V,P, C_V, C_P):
 def CPML_Psi_m_Update(V,P, C_V, C_P):  
     for nz in range(0, P.pmlWidth+1): 
         C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
-        V.Hy[nz] = V.Hy[nz] +10*C_V.C2[nz]*C_V.psi_Hy[nz]
+        V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[nz]
    # nz=0
-    
-    
+    for nz in range(P.Nz, P.Nz+2-P.pmlWidth, -1):
+        C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
+        V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[nz]
     return C_V.psi_Hy, V.Hy 
 
 
@@ -367,6 +387,57 @@ def CPML_PEC(V, P, C_V, C_P):
 def CPML_PMC(V,P,C_V, C_P):
     V.Hy[P.Nz-1]=0
     return V.Hy[P.Nz-1]
+
+
+def CPML_Plot_Scaling(V, P, C_V, C_P):
+    ## plot all scaling vars, write to folder same directory as video so each run outputs all graphs for debugging. 
+    ## Also consider outputting all interesting variables in plots. 
+    #Sigma E, Sigma H, plot entire C_V, C_P classes. Iterate through all? Reflection?
+    """
+     self.kappaMax =1# 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+        self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
+        self.r_a_scale=1
+        self.sigmaEMax=1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.sigmaHMax =1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
+        self.sigmaOpt  =1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
+    #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
+        self.alphaMax=0.02# with bounds of ideal cpm
+        
+        self.kappa_Ex = np.zeros(Nz)
+        self.kappa_Hy = np.zeros(Nz)
+        self.psi_Ex =  np.zeros(Nz)
+        self.psi_Ex_Probe = np.zeros(timeSteps)
+        self.psi_Hy =  np.zeros(Nz)
+        self.psi_Hy_Probe = np.zeros(timeSteps)
+        self.alpha_Ex = np.zeros(Nz)
+        self.alpha_Hy = np.zeros(Nz)
+        self.sigma_Ex =np.zeros(Nz)   # specific spatial value of conductivity 
+        self.sigma_Hy = np.zeros(Nz)
+        self.beX =np.zeros(Nz)
+        self.bmY =np.zeros(Nz)#np.exp(-(sigmaHy/(permea_0*kappa_Hy) + alpha_Hy/permea_0 )*delT)
+        self.ceX = np.zeros(Nz)
+        self.cmY = np.zeros(Nz)
+        self.Ca = np.zeros(Nz)
+        self.Cb = np.zeros(Nz)
+        self.Cc = np.zeros(Nz)
+        self.C1 = np.zeros(Nz)
+        self.C2 = np.zeros(Nz)
+        self.C3 = np.zeros(Nz)
+        self.eLoss_CPML =np.zeros(Nz)   # sigma e* delT/2*epsilon
+        self.mLoss_CPML = np.zeros(Nz)
+        self.den_Hydz = np.zeros(Nz)
+        self.den_Exdz = np.zeros(Nz) 
+        self.tempTempVarPsiEx = np.zeros(Nz)
+        self.tempVarPsiEx = np.zeros(Nz)
+        self.tempTempVarPsiHy = np.zeros(Nz)
+        self.tempVarPsiHy = np.zeros(Nz)
+        self.psi_Ex_Old= np.zeros(timeSteps)
+        self.psi_Hy_Old = np.zeros(timeSteps)
+        
+    
+    """
+    pass
+
 @nj
 def ADE_TempPolCurr(V,P, C_V, C_P):
      for nz in range(1, P.Nz-1):
@@ -431,7 +502,7 @@ def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):   #FIND ADE PAPER!
 def ADE_HyUpdate(V, P, C_V, C_P):
     
     for nz in range(1, P.Nz-1):
-        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]#*C_V.den_Hydz[nz] 
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*C_V.den_Hydz[nz] 
         #V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*(1/P.courantNo)#*C_V.den_Hydz[nz]
         #if(np.isnan(V.Hy[nz]) or V.Hy[nz] > 10):
          #    print("Hy IS wrong", V.Hy[nz], nz)
@@ -468,7 +539,7 @@ def ADE_ExUpdate(V, P, C_V, C_P):
         #V.tempVarE[nz] = V.Ex[nz]
        # V.Ex[nz] =V.Ex[nz] + (V.Hy[nz] - V.Hy[nz-1]])#*(1/P.courantNo)#*((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)*C_V.den_Exdz[nz]
        # ((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))
-       V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1]-0.5*(1+kapE)*V.Jx[nz])*V.UpExMat[nz]#*C_V.den_Exdz[nz]
+       V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1]-0.5*(1+kapE)*V.Jx[nz])*V.UpExMat[nz]*C_V.den_Exdz[nz]
        #.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]# +V.Jx[nz]
     return V.Ex
 

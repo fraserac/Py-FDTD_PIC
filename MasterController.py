@@ -238,14 +238,14 @@ specCP = [('kappaMax',float32),
 @jclass(specCP)
 class CPML_Params(object):
     def __init__(self, dz):
-        self.kappaMax =12# 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+        self.kappaMax =5# 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
         self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
         self.r_a_scale=1
-        self.sigmaEMax=10*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
-        self.sigmaHMax =10*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
-        self.sigmaOpt  =10*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
+        self.sigmaEMax=1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.sigmaHMax =1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
+        self.sigmaOpt  =1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
     #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
-        self.alphaMax=0.25# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.alphaMax=0.1# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
     
     def __repr__(self):
         return (f'{self.__class__.__name__}')
@@ -339,7 +339,7 @@ def integrator(V, P, C_V, C_P,Exs, Hys, i, probeReadStart):
         V.Ex = BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P)
       #  V.Dx = BaseFDTD11.ADE_DxUpdate(V,P, C_V, C_P)
        # V.Ex = BaseFDTD11.ADE_ExCreate(V,P, C_V, C_P)
-       # C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
+        C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
         #if i == 1:
          #    V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
             # V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
@@ -351,7 +351,7 @@ def integrator(V, P, C_V, C_P,Exs, Hys, i, probeReadStart):
         V.Ex[P.nzsrc] = BaseFDTD11.ExTfSfCorr(V,P, counts, Hys)
         
         V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-       # C_V.psi_Hy, V.Hy  = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
+        C_V.psi_Hy, V.Hy  = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
         
        
         #C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
@@ -359,8 +359,8 @@ def integrator(V, P, C_V, C_P,Exs, Hys, i, probeReadStart):
         V.Ex_History[counts] = V.Ex
         #breakpoint()
         #print(np.max(V.Ex),"Ex max")
-        #Psi_Ex_History[counts] = C_V.psi_Ex
         #V.Psi_e_History[counts] = C_V.psi_Ex
+        #C_V.Psi_e_History[counts] = C_V.psi_Ex
         #V.Hy_History[counts] = V.Hy
         #V.Jx_History[counts] = V.Jx
         #V.Dx_History[counts] = V.Dx
@@ -425,13 +425,13 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
 ###############   VARIABLES AND CALLS FOR PROGRAM INITIATION
 #########
 
-MORmode = True
-domainSize=1000
-freq_in =2e9 
-delayMOR =10
+MORmode = True 
+domainSize=800
+freq_in =4e9 
+delayMOR =20
 noOfEnvOuts = 20
 setupReturn = []*noOfEnvOuts
-setupReturn =envDef.envSetup(freq_in, domainSize, 550, 650)   # this function returns a list with all evaluated model parameters
+setupReturn =envDef.envSetup(freq_in, domainSize, 300, 360)   # this function returns a list with all evaluated model parameters
 P= Params(*setupReturn, MORmode, domainSize, freq_in, delayMOR) #be careful with tuple, check ordering of parameters 
 V=Variables(P.Nz, P.timeSteps)
 C_P = CPML_Params(P.dz)
