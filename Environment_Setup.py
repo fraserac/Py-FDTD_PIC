@@ -27,10 +27,11 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     lamMin = (c0/freq_in)
     
     #print("LamMin ", P.lamMin)
-    Nlam= 30
+    Nlam=80
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
     delT = (dz/c0)#/(P.c0*np.sqrt(1/(P.dz**2)))
+    print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
     #P.delT = ma.floor(P.delT* multiplier) / multiplier
@@ -40,7 +41,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     if courantNo > 3 or courantNo <0:
         print(courantNo, "courantNo is unstable")
         sys.exit()
-    pmlWidth = 2*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
+    pmlWidth =10*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
     #print('pmlWidth = ' , P.pmlWidth)
     if (pmlWidth >= 12000):
         print('pmlWidth too big', pmlWidth)
@@ -95,12 +96,12 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     
     print('timesteps: ', timeSteps)
     
-    if(timeSteps >= 10000):
+    if(timeSteps >= 15000):
         print('timeSteps too large')
         sys.exit()
     t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
     
-    nzsrcFromPml = 2*int(lamMin/dz)
+    nzsrcFromPml =200
     if nzsrcFromPml >= domainSize*0.65:
         print(nzsrcFromPml, 'src is too far into domain')
         sys.exit()
@@ -113,7 +114,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 5*int(lamMin/dz)
+    MaterialDistFromPml = 18*int(lamMin/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1
@@ -128,8 +129,8 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     if materialFrontEdge <= nzsrc:
         print("Source is inside material")
         sys.exit()
-    x1Loc = materialFrontEdge-10
-    x2Loc = nzsrc -10
+    x1Loc = nzsrc + 500
+    x2Loc = nzsrc-100
     
     eLoss =0   # sigma e* delT/2*epsilon
     mLoss = 0

@@ -12,10 +12,15 @@ import numpy as np
 import matplotlib.pylab as plt
 from scipy import signal as sign
 import sys 
+
 from numba import njit as nj
 from numba import jit
 
 from numba import int32, float32, int64, float64, boolean, complex128
+
+
+
+### CONSIDER IMPLEMENTING DIFFERENT SOURCES RF, gaussian, ricker, as well as sine pulse
 def sourceGen(T):
     pulse = np.exp(-(T - 30)*(T-30)/100)
     return pulse
@@ -72,21 +77,43 @@ def FieldInit(V,P):
     
     return V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy
 
-def SmoothTurnOn(V,P):
+
+
+def Gaussian(V,P):
+    #use signal scipy?
+    t = np.arange(P.timeSteps)
+    fc = 200
+    tau = fc*2.2
+    
+    gaussArg = ((t-tau)*(t-tau))/(fc*fc)*np.cos(2*np.pi*P.freq_in*(t-tau))
+    out = np.exp(-gaussArg)*2
+    out = P.Amplitude*out/P.courantNo
+    #this creates Exs, functions like smoothturnon for TFSF
+    return out
+
+def SineCont(V,P, rep, interv):
+    pass
+
+def Ricker(V,P):
+    pass
+
+
+
+
+
+
+def SmoothTurnOn(V,P):   # prevents discontinuity in source pattern from causing instability
     ppw =  P.c0 /(P.freq_in*P.dz)
     Exs =[]
     Hys = []
+    
     for timer in range(P.timeSteps):
-        if(timer*P.delT < P.period):
+        if(timer*P.delT < P.period*P.Periods):
             Exs.append(float(np.sin(2.0*np.pi/ppw*(P.courantNo*timer))))
             Hys.append(float(np.sin(2.0*np.pi/ppw*(P.courantNo*(timer+1)))))
-        elif(timer*P.delT >= P.period):  
+        elif(timer*P.delT >= P.period*P.Periods):  
             Exs.append(0)
             Hys.append(0)
-    for boo in range(P.timeSteps):
-        if(abs(Hys[boo]) > 0 and abs(Exs[boo]) == 0 ):
-            Hys[boo-1] =0
-            break    
     return Exs, Hys   
     
 
@@ -103,7 +130,7 @@ def EmptySpaceCalc(V,P):
 
 
 
-def Material(V,P):
+def Material(V,P):  # This was used originally before dispersive media ADE, is now redundant
     V.epsilon = np.ones(P.Nz)
     V.mu = np.ones(P.Nz)
     for kj in range(P.Nz):
@@ -131,19 +158,23 @@ def Material(V,P):
     return V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf, V.UpHyEcompsCo, V.UpHySelf
 
     
-
+### CHECK COEFFS ABOVE DO NOT SHOW UP IN CODE
 
  
-@nj
-def UpdateCoef(V,P):
+
+def UpdateCoef(V,P):  # 
     UpHyBackground = (1/P.CharImp)*P.courantNo
     UpExBackground = P.CharImp*P.courantNo
-    UpHyMat = np.zeros(P.Nz+1) 
-    UpExMat = np.zeros(P.Nz+1)
+    UpHyMat = np.ones(P.Nz+1) 
+    UpExMat = np.ones(P.Nz+1)
     
-    for k in range(P.Nz):
-        UpExMat[k]= UpExBackground
-        UpHyMat[k]= UpHyBackground
+    #for k in range(P.Nz):
+    UpExMat*=UpExBackground
+    UpHyMat*=UpHyBackground
+    for k in range(P.materialFrontEdge, P.materialRearEdge):
+        UpExMat[k] = UpExMat[k]/V.epsilon[k]
+        UpHyMat[k] = UpHyMat[k]/V.mu[k]
+        
 
     return UpHyMat, UpExMat
 
@@ -153,15 +184,15 @@ def HyTfSfCorr(V, P, counts, Exs):
      V.Hy[P.nzsrc-1] -= Exs[counts]/P.CharImp
      return V.Hy[P.nzsrc-1]#
  
-forlocals2 ={'Hys' : float64[:], 'counts' : int32} 
+forlocals2 ={'Hys' : float64[:], 'counts' : int32} ### for tf/sf
 @jit(nopython=True, locals= forlocals2)
 def ExTfSfCorr(V,P, counts, Hys):
     V.Ex[P.nzsrc] += Hys[counts]
     return V.Ex[P.nzsrc]
 @nj
-def CPML_FieldInit(V,P, C_V, C_P): 
-    C_V.kappa_Ex =np.zeros(P.Nz+1)
-    C_V.kappa_Hy = np.zeros(P.Nz+1)
+def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml 
+    C_V.kappa_Ex =np.ones(P.Nz+1)
+    C_V.kappa_Hy = np.ones(P.Nz+1)
     C_V.psi_Ex =np.zeros(P.Nz+1)
     C_V.psi_Hy = np.zeros(P.Nz+1)
     C_V.alpha_Ex= np.zeros(P.Nz+1)
@@ -180,193 +211,287 @@ def CPML_FieldInit(V,P, C_V, C_P):
     C_V.C1 = np.zeros(P.Nz+1)
     C_V.C2 = np.zeros(P.Nz+1)
     C_V.C3 = np.zeros(P.Nz+1)
+    C_V.den_Exdz = np.ones(len(V.Ex))
+    C_V.den_Hydz = np.ones(len(V.Ex))
     return C_V
+
 
 @nj    
 def CPML_ScalingCalc(V, P, C_V, C_P):
-    jj=P.pmlWidth
-    jjj = P.pmlWidth-1
-    for nz in range(P.Nz):
-        nz1= nz+1
-        if (nz1 <=P.pmlWidth): 
-            C_V.kappa_Ex[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz1)/(P.pmlWidth-1))**C_P.r_scale
-            C_V.sigma_Ex[nz] = C_P.sigmaOpt*((P.pmlWidth - nz1)/(P.pmlWidth-1))**C_P.r_scale   
-            C_V.alpha_Ex[nz] = C_P.alphaMax*(nz1/(P.pmlWidth-1))**C_P.r_a_scale 
-
-        elif nz >= P.Nz+2 -(P.pmlWidth):
-            C_V.kappa_Ex[nz] = C_V.kappa_Ex[jj]
-            C_V.sigma_Ex[nz] = C_V.sigma_Ex[jj]
-            C_V.alpha_Ex[nz] = C_V.alpha_Ex[jj]
-            jj-=1
-            
-        else:
-            C_V.kappa_Ex[nz] = 1
-            C_V.sigma_Ex[nz] = 0
-            C_V.alpha_Ex[nz] = 0
-
-        if (nz1 <=P.pmlWidth-1):
-            C_V.kappa_Hy[nz] =1+(C_P.kappaMax-1)*((P.pmlWidth-nz1-0.5)/(P.pmlWidth-1))**C_P.r_scale
-            C_V.sigma_Hy[nz] = C_P.sigmaOpt*((P.pmlWidth -nz1-0.5)/(P.pmlWidth-1))**C_P.r_scale   #np.abs(((C_P.sigmaEMax)*(np.abs(nz -0.75)/P.pmlWidth)**(C_P.r_scale))*C_P.sigmaHMax)
-            C_V.alpha_Hy[nz] = C_P.alphaMax*((nz1-0.5)/(P.pmlWidth-1))**C_P.r_a_scale#np.abs(((1)*(1-(counter)/P.pmlWidth)**(C_P.r_a_scale))*C_P.alphaMax)
-            
-        
-        elif nz >= P.Nz +2 - P.pmlWidth:
-            C_V.kappa_Hy[nz] = C_V.kappa_Hy[jjj]
-            C_V.sigma_Hy[nz] = C_V.sigma_Hy[jjj]
-            C_V.alpha_Hy[nz] = C_V.alpha_Hy[jjj]
-            jjj-=1
-        else:
-            C_V.kappa_Hy[nz] = 1
-            C_V.sigma_Hy[nz] = 0
-            C_V.alpha_Hy[nz] = 0 
+    kappa_Ex_n = np.ones(P.pmlWidth)
+    sigma_Ex_n = np.zeros(P.pmlWidth)
+    alpha_Ex_n = np.zeros(P.pmlWidth)
+    kappa_Ex_p=np.ones(P.pmlWidth)
+    sigma_Ex_p = np.zeros(P.pmlWidth)
+    alpha_Ex_p = np.zeros(P.pmlWidth)
+    kappa_Hy_n = np.ones(P.pmlWidth)
+    sigma_Hy_n = np.zeros(P.pmlWidth)
+    alpha_Hy_n = np.zeros(P.pmlWidth)
+    kappa_Hy_p=np.ones(P.pmlWidth)
+    sigma_Hy_p = np.zeros(P.pmlWidth)
+    alpha_Hy_p = np.zeros(P.pmlWidth)
+    
+    nz =np.arange(0, P.pmlWidth,1)
+    kappa_Ex_n[0:P.pmlWidth] = 1+(C_P.kappaMax-1)*((P.pmlWidth-nz)/(P.pmlWidth))**C_P.r_scale
+    sigma_Ex_n[0:P.pmlWidth] = C_P.sigmaOpt*((P.pmlWidth-nz)/(P.pmlWidth))**C_P.r_scale
+    alpha_Ex_n[0:P.pmlWidth] =  C_P.alphaMax*((nz+1)/(P.pmlWidth))**C_P.r_a_scale 
+    
+    
+    kappa_Hy_n[0:P.pmlWidth] = kappa_Ex_n[0:P.pmlWidth]
+    sigma_Hy_n[0:P.pmlWidth] = sigma_Ex_n[0:P.pmlWidth]
+    alpha_Hy_n[0:P.pmlWidth] = alpha_Ex_n[0:P.pmlWidth]
+    
+    #right side scaling vars
+    kappa_Ex_p[0:P.pmlWidth] = kappa_Ex_n[::-1] 
+    sigma_Ex_p[0:P.pmlWidth] = sigma_Ex_n[::-1]
+    alpha_Ex_p[0:P.pmlWidth] = alpha_Ex_n[::-1]
+    
+    kappa_Hy_p[0:P.pmlWidth] = kappa_Hy_n[::-1]
+    sigma_Hy_p[0:P.pmlWidth] = sigma_Hy_n[::-1]
+    alpha_Hy_p[0:P.pmlWidth] = alpha_Hy_n[::-1]
+    
+    #set up C_V
+    C_V.kappa_Ex[:P.pmlWidth] = kappa_Ex_n 
+    C_V.kappa_Ex[len(V.Ex)-P.pmlWidth: len(V.Ex)] = kappa_Ex_p
+    
+    C_V.sigma_Ex[:P.pmlWidth] = sigma_Ex_n 
+    C_V.sigma_Ex[len(V.Ex)-P.pmlWidth: len(V.Ex)] = sigma_Ex_p
+    
+    C_V.alpha_Ex[:P.pmlWidth] = alpha_Ex_n 
+    C_V.alpha_Ex[len(V.Ex)-P.pmlWidth: len(V.Ex)] = alpha_Ex_p
+    
+    C_V.kappa_Hy = C_V.kappa_Ex
+    C_V.sigma_Hy = C_V.sigma_Ex
+    C_V.alpha_Hy = C_V.alpha_Ex
+    #breakpoint()
+    
         
     return C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy
 
-
+@nj
 def CPML_Ex_RC_Define(V, P, C_V, C_P):
-    window = sign.hann(P.Nz+1)
-    jj = P.pmlWidth-1
-    jjj =P.pmlWidth-1
-    for nz in range(0, P.Nz):
-        if(nz <=P.pmlWidth-1):
-            C_V.beX[nz] = np.exp(-((C_V.sigma_Ex[nz]*P.delT/C_V.kappa_Ex[nz])+((C_V.alpha_Ex[nz]*P.delT)/P.permit_0)))
-
-        elif nz >= P.Nz+2 -P.pmlWidth:
-            C_V.beX[nz] = np.exp(-((C_V.sigma_Ex[nz]*P.delT/C_V.kappa_Ex[nz])+((C_V.alpha_Ex[nz]*P.delT)/P.permit_0)))
-            jj-=1
-            
-        elif C_V.alpha_Ex[nz] ==0:
-            C_V.beX[nz] =0
-       
-        if C_V.sigma_Ex[nz] ==0 and nz==P.pmlWidth-1 and C_V.alpha_Ex[nz]==0:
-           C_V.ceX[nz]=0
-        elif nz <=P.pmlWidth-1:
-            C_V.ceX[nz] = (C_V.beX[nz]-1)*C_V.sigma_Ex[nz]/(C_V.sigma_Ex[nz]+C_V.alpha_Ex[nz]*C_V.kappa_Ex[nz])/C_V.kappa_Ex[nz]
-        elif nz >= P.Nz+2 -P.pmlWidth:
-            C_V.ceX[nz] = (C_V.beX[jjj]-1)*C_V.sigma_Ex[jjj]/(C_V.sigma_Ex[jjj]+C_V.alpha_Ex[jjj]*C_V.kappa_Ex[jjj])/C_V.kappa_Ex[jjj]
-            jjj-=1
-        else:
-             C_V.ceX[nz] =0
+    #window = sign.hann(P.Nz+1)
+    
+    C_V.beX[:P.pmlWidth] = np.exp(-((C_V.sigma_Ex[:P.pmlWidth]*P.delT/(C_V.kappa_Ex[:P.pmlWidth]*P.permit_0))+((C_V.alpha_Ex[:P.pmlWidth]*P.delT)/P.permit_0))) 
+    C_V.beX[len(V.Ex)-P.pmlWidth:] = np.exp(-((C_V.sigma_Ex[len(V.Ex)-P.pmlWidth:]*P.delT/(C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]*P.permit_0))+((C_V.alpha_Ex[len(V.Ex)-P.pmlWidth:]*P.delT)/P.permit_0))) 
+    
+    C_V.ceX[:P.pmlWidth] = (C_V.beX[:P.pmlWidth]-1)*C_V.sigma_Ex[:P.pmlWidth]/((C_V.sigma_Ex[:P.pmlWidth]*C_V.kappa_Ex[:P.pmlWidth]+C_V.alpha_Ex[:P.pmlWidth]*C_V.kappa_Ex[:P.pmlWidth]*C_V.kappa_Ex[:P.pmlWidth]))
+    C_V.ceX[len(V.Ex)-P.pmlWidth:] = (C_V.beX[len(V.Ex)-P.pmlWidth:]-1)*C_V.sigma_Ex[len(V.Ex)-P.pmlWidth:]/((C_V.sigma_Ex[len(V.Ex)-P.pmlWidth:]*C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]+C_V.alpha_Ex[len(V.Ex)-P.pmlWidth:]*C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]*C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]))
+    #breakpoint()
+        
    # C_V.beX = sign.convolve(C_V.beX, window, mode= 'same')/np.sum(window)  
     return C_V.beX, C_V.ceX
 
 @nj
 def CPML_HY_RC_Define(V, P, C_V, C_P):
-    jj = P.pmlWidth-2
-    jjj =P.pmlWidth-2
-   
-    for nz in range(0, P.Nz):
-        
-        if(nz <=P.pmlWidth-2):
-            C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[nz]/(C_V.kappa_Hy[nz]+C_V.alpha_Hy[nz]))*P.delT/P.permea_0)
-        elif nz >= P.Nz+2 -P.pmlWidth:
-            C_V.bmY[nz] = np.exp(-(C_V.sigma_Hy[jj]/(C_V.kappa_Hy[jj]+C_V.alpha_Hy[jj]))*P.delT/P.permea_0)
-            jj-=1
-        else:
-            C_V.bmY[nz] =0 
-            
-             
-        if C_V.sigma_Hy[nz] ==0 and nz==P.pmlWidth-1 and C_V.alpha_Hy[nz]==0:
-           C_V.cmY[nz]=0
-        elif nz<=P.pmlWidth-1:
-            C_V.cmY[nz] = (C_V.bmY[nz]-1)*C_V.sigma_Hy[nz]/(C_V.sigma_Hy[nz]+C_V.alpha_Hy[nz]*C_V.kappa_Hy[nz])/C_V.kappa_Hy[nz]
-        elif nz >= P.Nz+2 -P.pmlWidth:
-            C_V.cmY[nz] = (C_V.bmY[jjj]-1)*C_V.sigma_Hy[jjj]/(C_V.sigma_Hy[jjj]+C_V.alpha_Hy[jjj]*C_V.kappa_Hy[jjj])/C_V.kappa_Hy[jjj]
-            jjj-=1
-        else:
-             C_V.cmY[nz] =0    
+    C_V.bmY[:P.pmlWidth] = np.exp(-((C_V.sigma_Hy[:P.pmlWidth]*P.delT/(C_V.kappa_Hy[:P.pmlWidth]*P.permit_0))+((C_V.alpha_Hy[:P.pmlWidth]*P.delT)/P.permit_0))) 
+    C_V.bmY[len(V.Hy)-P.pmlWidth:] = np.exp(-((C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]*P.delT/(C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]*P.permit_0))+((C_V.alpha_Hy[len(V.Hy)-P.pmlWidth:]*P.delT)/P.permit_0))) 
+    
+    C_V.cmY[:P.pmlWidth] = (C_V.bmY[:P.pmlWidth]-1)*C_V.sigma_Hy[:P.pmlWidth]/((C_V.sigma_Hy[:P.pmlWidth]*C_V.kappa_Hy[:P.pmlWidth]+C_V.alpha_Hy[:P.pmlWidth]*C_V.kappa_Hy[:P.pmlWidth]*C_V.kappa_Hy[:P.pmlWidth])*P.dz)
+    C_V.cmY[len(V.Hy)-P.pmlWidth:] = (C_V.bmY[len(V.Hy)-P.pmlWidth:]-1)*C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]/((C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]*C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]+C_V.alpha_Hy[len(V.Hy)-P.pmlWidth:]*C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]*C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:])*P.dz)
+    #breakpoint()
     return C_V.bmY, C_V.cmY
 
 
 def CPML_Ex_Update_Coef(V,P, C_V, C_P):
     
-    betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
+    betaE = (0.5*V.plasmaFreqE*V.plasmaFreqE*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)  # This is only called once 
     kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
     a= ((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))
     b =  ((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)
-    for nz in range(0, P.Nz-1):
+    #breakpoint()
+    for nz in range(0, P.pmlWidth):
         C_V.eLoss_CPML[nz] = (C_V.sigma_Ex[nz]*P.delT)/(2*P.permit_0)
         
         C_V.Ca[nz] = a
-        C_V.Cb[nz] = b#V.UpExHcompsCo[nz]*V.UpExMat[nz]
+        C_V.Cb[nz] = V.UpExHcompsCo[nz]*V.UpExMat[nz]
+        C_V.Cc[nz] = P.delT/((1+C_V.eLoss_CPML[nz])*P.permit_0)
+    for nz in range(len(V.Hy)-1, len(V.Hy)-P.pmlWidth, -1):
+        C_V.eLoss_CPML[nz] = (C_V.sigma_Ex[nz]*P.delT)/(2*P.permit_0)
+        
+        C_V.Ca[nz] = a
+        C_V.Cb[nz] = V.UpExHcompsCo[nz]*V.UpExMat[nz]
         C_V.Cc[nz] = P.delT/((1+C_V.eLoss_CPML[nz])*P.permit_0)
     return C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc    
 
 @nj
 def CPML_Hy_Update_Coef(V,P, C_V, C_P):
-    for nz in range(0, P.Nz-2):
+    for nz in range(0, P.pmlWidth):  # Some of these could be redundant check this 
         C_V.C1[nz] =1
-        C_V.C2[nz] = -P.delT/P.permea_0
+        C_V.C2[nz] = P.delT/P.permea_0
+        C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
+    for nz in range(len(V.Hy)-1, len(V.Hy)-P.pmlWidth, -1):
+        C_V.C1[nz] =1
+        C_V.C2[nz] = P.delT/P.permea_0
         C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
     return C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3   
 
 @nj   
 def denominators(V, P, C_V, C_P):
-    jj = P.pmlWidth-2
-    for j in range(0,P.Nz): 
-        if j <= P.pmlWidth -2:
+    jj = P.pmlWidth
+       # set denom as vector of ones default
+       
+    
+    for j in range(0,len(V.Hy)): 
+        if j <= P.pmlWidth  and P.CPMLXm ==True:
             C_V.den_Hydz[j]= 1/(C_V.kappa_Hy[j])
-        elif j>= P.Nz+2-P.pmlWidth:
+        elif j>= len(V.Hy)-P.pmlWidth and P.CPMLXp == True:
             C_V.den_Hydz[j] = 1/(C_V.kappa_Hy[jj])
             
             jj-=1
         else:
             C_V.den_Hydz[j] = 1/(1)
     jj = P.pmlWidth-1
-    for j in range(0,P.Nz): 
-        if j <= P.pmlWidth-1:
+    for j in range(0,len(V.Ex)): 
+        if j <= P.pmlWidth and P.CPMLXm ==True:
             C_V.den_Exdz[j]= 1/(C_V.kappa_Ex[j])
-        elif j>= P.Nz+2-P.pmlWidth:
+        elif j>=len(V.Ex)-P.pmlWidth and P.CPMLXp ==True:
             C_V.den_Exdz[j] = 1/(C_V.kappa_Ex[jj])
             jj-=1
         else:
-            C_V.den_Exdz[j] = 1/(1)        
+            C_V.den_Exdz[j] = 1/(1)       
+    
     return C_V.den_Exdz, C_V.den_Hydz
     
     
 
-@nj
-def CPML_Psi_e_Update(V,P, C_V, C_P):  
-    for nz in range(1, P.pmlWidth+1): 
-        C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
-        V.Ex[nz] = V.Ex[nz] + 10*C_V.Cb[nz]*C_V.psi_Ex[nz]
-    #nz=0
-   
-    
-    return C_V.psi_Ex, V.Ex 
+forLocals = {'zeta0': float64[:], 'zeta1':float64[:]}
+
+@jit(nopython = True, locals=forLocals, debug =True)
+def CPML_Psi_e_Update(V,P, C_V, C_P): 
+    #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
+   # zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
+   if P.CPMLXm ==True:
+       for nz in range(1, P.pmlWidth): 
+            C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
+            V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz]
+   if P.CPMLXp ==True:
+       for nz in range(len(V.Ex)- P.pmlWidth, len(V.Ex)): 
+            C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
+            V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz] 
+   """
+   if np.sum(np.isnan(C_V.psi_Ex))>0:
+        breakpoint()
+   if np.sum(np.isinf(C_V.psi_Ex))>0:
+        breakpoint()            
+   if np.sum(np.abs(C_V.psi_Ex)) > 100:
+       breakpoint()
+   """
+   return C_V.psi_Ex, V.Ex 
 ########################### DELIBERATELY BROKEN, FIX THIS TOMORROW!
-@nj
-def CPML_Psi_m_Update(V,P, C_V, C_P):  
-    for nz in range(0, P.pmlWidth+1): 
+@jit(nopython = True, locals=forLocals, debug =True)
+def CPML_Psi_m_Update(V,P, C_V, C_P): 
+    #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
+    #zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
+    if P.CPMLXm ==True:
+       for nz in range(1, P.pmlWidth): 
         C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
-        V.Hy[nz] = V.Hy[nz] +10*C_V.C2[nz]*C_V.psi_Hy[nz]
-   # nz=0
-    
-    
+        V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[nz]
+    if P.CPMLXp ==True:
+       for nz in range(len(V.Ex)- P.pmlWidth, len(V.Ex)-1): 
+            C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
+            V.Hy[nz] = V.Hy[nz] +C_V.C2[nz]*C_V.psi_Hy[nz]
+    """
+    if np.sum(np.isnan(C_V.psi_Hy))>0:
+        breakpoint()
+    if np.sum(np.isinf(C_V.psi_Hy))>0:
+        breakpoint()
+    if np.sum(np.abs(C_V.psi_Ex)) > 100:
+        breakpoint()
+    """
     return C_V.psi_Hy, V.Hy 
 
 
 @nj
 def CPML_HyUpdate(V,P, C_V, C_P):
-    for nz in range(0, P.Nz-2):
+    for nz in range(0, len(V.Hy)):
         V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*(1/P.courantNo)
     return V.Hy
 
 
 @nj
 def CPML_ExUpdate(V,P, C_V, C_P):
-    for nz in range(1, P.Nz-1):
-        V.Ex[nz] = V.Ex[nz]*V.UpExSelf[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#V.Jx[nz])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#*C_V.den_Exdz[nz]
+    
+    V.Ex[1:-1] = V.Ex[1:-1]*V.UpExSelf[1:-1] + (V.Hy[1:-1]-V.Hy[:-2])*V.UpExHcompsCo[1:-1]*V.UpExMat[1:-1]#V.Jx[nz])*V.UpExHcompsCo[nz]*V.UpExMat[nz]#*C_V.den_Exdz[nz]
+    if P.CPMLXm ==True:
+        V.Ex[1:P.pmlWidth] = 1*V.Ex[1:P.pmlWidth]*V.UpExSelf[1:P.pmlWidth] + (V.Hy[1:P.pmlWidth]-V.Hy[:P.pmlWidth-1])*V.UpExHcompsCo[1:P.pmlWidth]*V.UpExMat[1:P.pmlWidth]
+    if P.CPMLXp ==True:
+        V.Ex[len(V.Ex)-P.pmlWidth+1:-1] = 1*V.Ex[len(V.Ex)-P.pmlWidth+1:-1]*V.UpExSelf[len(V.Ex)-P.pmlWidth+1:-1] + (V.Hy[len(V.Ex)-P.pmlWidth+1:-1]-V.Hy[len(V.Ex)-P.pmlWidth:-2])*V.UpExHcompsCo[len(V.Ex)-P.pmlWidth+1:-1]*V.UpExMat[len(V.Ex)-P.pmlWidth+1:-1]
     return V.Ex
 
 @nj
 def CPML_PEC(V, P, C_V, C_P):
     V.Ex[0] =0
-    return V.Ex[0], V.Ex[P.Nz-1]
+    return V.Ex[0], V.Ex[-1]
 @nj
 def CPML_PMC(V,P,C_V, C_P):
-    V.Hy[P.Nz-1]=0
-    return V.Hy[P.Nz-1]
+    V.Hy[-1]=0
+    return V.Hy[-1]
+
+
+def CPML_Plot_Scaling(V, P, C_V, C_P):
+    ## plot all scaling vars, write to folder same directory as video so each run outputs all graphs for debugging. 
+    ## Also consider outputting all interesting variables in plots. 
+    #Sigma E, Sigma H, plot entire C_V, C_P classes. Iterate through all? Reflection?
+    fig, ax = plt.subplots()
+    ax.plot(C_V.kappa_Ex)
+    ax.plot(C_V.sigma_Ex)
+    ax.plot(C_V.alpha_Ex)
+    ax.set_title("Scaling parameters Ex, CPML")
+    ax.legend(["kappa Ex","sigma Ex", "alpha Ex"])
+    
+    fig2, ax2 = plt.subplots()
+    ax2.plot(C_V.kappa_Hy)
+    ax2.plot(C_V.sigma_Hy)
+    ax2.plot(C_V.alpha_Hy)
+    ax2.set_title("Scaling parameters Hy, CPML")
+    ax2.legend(["kappa Hy","sigma Hy", "alpha Hy"])
+    
+    """
+     self.kappaMax =1# 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+        self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
+        self.r_a_scale=1
+        self.sigmaEMax=1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.sigmaHMax =1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
+        self.sigmaOpt  =1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
+    #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
+        self.alphaMax=0.02# with bounds of ideal cpm
+        
+        self.kappa_Ex = np.zeros(Nz)
+        self.kappa_Hy = np.zeros(Nz)
+        self.psi_Ex =  np.zeros(Nz)
+        self.psi_Ex_Probe = np.zeros(timeSteps)
+        self.psi_Hy =  np.zeros(Nz)
+        self.psi_Hy_Probe = np.zeros(timeSteps)
+        self.alpha_Ex = np.zeros(Nz)
+        self.alpha_Hy = np.zeros(Nz)
+        self.sigma_Ex =np.zeros(Nz)   # specific spatial value of conductivity 
+        self.sigma_Hy = np.zeros(Nz)
+        self.beX =np.zeros(Nz)
+        self.bmY =np.zeros(Nz)#np.exp(-(sigmaHy/(permea_0*kappa_Hy) + alpha_Hy/permea_0 )*delT)
+        self.ceX = np.zeros(Nz)
+        self.cmY = np.zeros(Nz)
+        self.Ca = np.zeros(Nz)
+        self.Cb = np.zeros(Nz)
+        self.Cc = np.zeros(Nz)
+        self.C1 = np.zeros(Nz)
+        self.C2 = np.zeros(Nz)
+        self.C3 = np.zeros(Nz)
+        self.eLoss_CPML =np.zeros(Nz)   # sigma e* delT/2*epsilon
+        self.mLoss_CPML = np.zeros(Nz)
+        self.den_Hydz = np.zeros(Nz)
+        self.den_Exdz = np.zeros(Nz) 
+        self.tempTempVarPsiEx = np.zeros(Nz)
+        self.tempVarPsiEx = np.zeros(Nz)
+        self.tempTempVarPsiHy = np.zeros(Nz)
+        self.tempVarPsiHy = np.zeros(Nz)
+        self.psi_Ex_Old= np.zeros(timeSteps)
+        self.psi_Hy_Old = np.zeros(timeSteps)
+        
+    
+    """
+    pass
+
 @nj
 def ADE_TempPolCurr(V,P, C_V, C_P):
      for nz in range(1, P.Nz-1):
@@ -385,11 +510,12 @@ def ADE_TempPolCurr(V,P, C_V, C_P):
          
      return V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy
 forlocalsJ ={'coef' : float64, 'V.Jx' : float64[:]} 
+
 @jit(nopython=True, locals=forlocalsJ)
-def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?
+def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?    NOT USING THIS IN CURRENT RENDITION
   
    
-    #betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+ 0.5*V.gammaE*P.delT)
+   # betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+ 0.5*V.gammaE*P.delT)
     #kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
     
     #selfCo = (2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT)
@@ -402,9 +528,10 @@ def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?
     
    # print("types: ", type(matLoc), type(gammaE), type(plas), type(betaE), type(kapE), type(selfCo), type(HCurlCo))
     #print(m1JxNum/m1JxDen, "co ef 1", m2PxNum/m1JxDen, "second coef", m3ExNum/m1JxDen)
-    coef= (1/(P.permit_0*V.plasmaFreqE*V.omega_0E**2))
+    coef= (1/(P.permit_0*V.plasmaFreqE*V.omega_0E*V.omega_0))
+    #print(coef)
     for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
-       V.Jx[nz] =coef*(V.omega_0E**2*V.tempVarPol[nz] + (V.gammaE/P.delT)*(V.polarisationCurr[nz]-V.tempVarPol[nz]) + (V.polarisationCurr[nz]-2*V.tempVarPol[nz] +V.tempTempVarPol[nz])/(P.delT**2))#( kapE*V.Jx[nz] + betaE*(V.Ex[nz] + V.tempTempVarE[nz]))*C_V.den_Exdz[nz]
+       V.Jx[nz] =coef*(V.omega_0E*V.omega_0E*V.tempVarPol[nz] + (V.gammaE/P.delT)*(V.polarisationCurr[nz]-V.tempVarPol[nz]) + (V.polarisationCurr[nz]-2*V.tempVarPol[nz] +V.tempTempVarPol[nz])/(P.delT*P.delT))#( kapE*V.Jx[nz] + betaE*(V.Ex[nz] + V.tempTempVarE[nz]))*C_V.den_Exdz[nz]
     return V.Jx
     # find paper
 
@@ -412,31 +539,40 @@ def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):   #FIND ADE PAPER!
     
   
-    D= (1/P.delT**2)+(V.gammaE/(2*P.delT))
+    D= 1+V.gammaE*P.delT
     #print("D ", D)
-    A = ((2/P.delT**2)-V.omega_0E**2)/D
+    A = (2-V.omega_0E*P.delT*P.delT)/D
     #print("A", A)
-    B = ((V.gammaE/(2*P.delT))-1/P.delT**2)/D
+    B =(V.gammaE*P.delT-1)/D
     #print(B)
-    C = (P.permit_0*(V.plasmaFreqE**2))/D
+    C = (V.gammaE*P.delT*P.delT)/D
     #print(C)
   
     for nz in range (int(P.materialFrontEdge-1), int(P.materialRearEdge)):
         V.polarisationCurr[nz] = A*V.tempVarPol[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]
+   # print("max polarisation vals ", np.max(V.polarisationCurr))
     return V.polarisationCurr
-
+# textbook for linear polarisation
+#Elsherbeni, Atef Z. Demir, Veysel. (2016). Finite-Difference Time-Domain Method for Electromagnetics with MATLAB® Simulations (2nd Edition) - 13.1.3 Modeling Drude Medium Using ADE Technique. Institution of Engineering and Technology. Retrieved from
+#https://app.knovel.com/hotlink/pdf/id:kt010WVJ54/finite-difference-time/modeling-drude-medium
 
 
 @nj
 def ADE_HyUpdate(V, P, C_V, C_P):
     
-    for nz in range(1, P.Nz-1):
-        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]#*C_V.den_Hydz[nz] 
+    for nz in range(1, P.Nz):
+        V.Hy[nz] = V.Hy[nz]*V.UpHySelf[nz] + (V.Ex[nz+1]-V.Ex[nz])*V.UpHyMat[nz]*C_V.den_Hydz[nz] #- (P.delT/P.permea_0)*C_V.psi_Hy[nz] 
         #V.Hy[nz] = V.Hy[nz] + (V.Ex[nz+1]-V.Ex[nz])*(1/P.courantNo)#*C_V.den_Hydz[nz]
         #if(np.isnan(V.Hy[nz]) or V.Hy[nz] > 10):
          #    print("Hy IS wrong", V.Hy[nz], nz)
              
              #sys.exit()#*C_V.den_Hydz[nz]
+    """
+    if np.sum(np.isnan(V.Hy))>0:
+        breakpoint()
+    if np.sum(np.isinf(V.Hy))>0:
+        breakpoint()
+    """
     return V.Hy
         
 def ADE_MyUpdate():
@@ -455,7 +591,7 @@ def ADE_ExUpdate(V, P, C_V, C_P):
    # plas = V.plasmaFreqE*matLoc
     
     
-    betaE = (0.5*V.plasmaFreqE**2*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
+    betaE = (0.5*V.plasmaFreqE*V.plasmaFreqE*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
     kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
     
     #selfCo = (2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT)
@@ -463,21 +599,33 @@ def ADE_ExUpdate(V, P, C_V, C_P):
     #HCurlCo= (2*P.delT)/(P.dz*(2*P.permit_0+betaE*P.delT))
     #print(np.max(HCurlCo), np.max(selfCo), "co-ef")
    # print(np.max(betaE), np.max(kapE), np.max(selfCo), np.max(HCurlCo), "MAXS")
-    for nz in range(1, P.Nz+1):
+    #0.5*(1+kapE)
+    for nz in range(1, P.Nz):
        # V.tempTempVarE[nz] = V.tempVarE[nz]
         #V.tempVarE[nz] = V.Ex[nz]
        # V.Ex[nz] =V.Ex[nz] + (V.Hy[nz] - V.Hy[nz-1]])#*(1/P.courantNo)#*((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)*C_V.den_Exdz[nz]
        # ((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))
-       V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1]-0.5*(1+kapE)*V.Jx[nz])*V.UpExMat[nz]#*C_V.den_Exdz[nz]
+    
+       ###### actual line
+         V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz]) #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
+       
+      ####### 
+       # V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*1-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz]) #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
        #.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]# +V.Jx[nz]
+    """
+    if np.sum(np.isnan(V.Ex))>0:
+        breakpoint()
+    if np.sum(np.isinf(V.Ex))>0:
+        breakpoint()
+    """
     return V.Ex
 
 
  
 @nj
 def ADE_ExCreate(V, P, C_V, C_P):
-    for nz in range(int(P.materialFrontEdge-1), int(P.materialRearEdge)):
-       V.Ex[nz] =(V.Dx[nz] - V.Jx[nz])/P.permit_0
+    for nz in range(1, P.Nz+1):
+       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
@@ -485,18 +633,41 @@ def ADE_ExCreate(V, P, C_V, C_P):
 
 @nj
 def ADE_DxUpdate(V, P, C_V, C_P):
-    for nz in range(int(P.materialFrontEdge), int(P.materialRearEdge)):
-        V.Dx[nz] =V.Dx[nz] + (V.Hy[nz]-V.Hy[nz-1])*(P.delT/(P.permit_0*P.dz))
+    for nz in range(1, P.Nz+1):
+        V.Dx[nz] =V.Dx[nz] + (V.Hy[nz]-V.Hy[nz-1])*(P.delT/(P.dz))*C_V.den_Exdz[nz]
         #print(V.Dx[nz])
-        V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
+       # V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
         #if abs(V.Dx[nz]) >1e-4:
             #print("Dx", V.Dx[nz], nz)
-    return V.Dx, V.Ex
+    return V.Dx
+
+
+
+def MUR1DEx(V,P, C_V, C_P):
+    # convert into for loop for forward and backwards waves
+    murMult = (P.c0*P.delT-P.dz)/(P.c0*P.delT+P.dz)
+    #nz=1
+    
+    #nz = 2
+    #V.Ex[nz] = V.tempTempVarE[nz+1] + murMult*(V.Ex[nz+1] - V.tempTempVarE[nz])
+    #backwards for loop
+    for nz in range(1, 95):
+        V.Ex[nz] = V.tempTempVarE[nz+1] + murMult*(V.Ex[nz+1] - V.tempTempVarE[nz])
+    #if V.Ex[nz] !=0:
+      #  print("Ex is nonzero: ", V.Ex[nz])
+    for nz in range(P.Nz-1, P.Nz-95, -1):
+         V.Ex[nz] = V.tempTempVarE[nz-1] + murMult*(V.Ex[nz-1] - V.tempTempVarE[nz])
+    #nz = P.Nz-1
+   
+    #if V.Ex[nz] !=0:
+     #   print("Ex is nonzero: ", V.Ex[nz])
+    
+    return V.Ex
 
 
 def AnalyticalReflectionE(V, P):
-    epsNum = ((V.plasmaFreqE)**2)
-    epsDom = (V.omega_0E**2-(2*np.pi*P.freq_in**2) - 1j*V.gammaE*2*np.pi*P.freq_in)
+    epsNum = (V.plasmaFreqE*V.plasmaFreqE)
+    epsDom = (V.omega_0E*V.omega_0E-(P.freq_in*P.freq_in) - 1j*V.gammaE*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
     # INTERESTING BUG WITH ARCSIN INVALID VALUE, UNIT TEST 
@@ -509,6 +680,10 @@ def AnalyticalReflectionE(V, P):
     #print(abs(reflection), "reflection analytical")
     #print(abs(trans)+abs(reflection), "sum of trans and reflection")
     realV = P.c0/(np.sqrt(abs(np.real(epsilon))))
+    n2 =  realV/P.c0
+    n1 = 1
+    reflectionNormInc = 1-abs((n1-n2)/(n1+n2))**2
+    print(reflectionNormInc, "NEW ANALYTICAL REFLECTION USING FRESNEL NORMAL INCIDENCE.")
     dispPhaseVelNum = (((2*np.pi*P.freq_in)*P.dz)/2)
     dispPhaseVelDenArg= ((P.dz)/(realV*P.delT))*np.sin((2*np.pi*P.freq_in*P.delT)/2)
     dispPhaseVel = dispPhaseVelNum/np.arcsin(dispPhaseVelDenArg)
@@ -521,9 +696,14 @@ def AnalyticalReflectionE(V, P):
     
    
     
-    return reflection, dispPhaseVel, realV
+    return reflectionNormInc
 
 
+
+
+def CPML(V,P, C_V, C_P):
+    
+    pass
 
 
 

@@ -19,11 +19,9 @@ import matplotlib.pylab as plt
 
 def VideoMaker(P,V):
     fig, ax = plt.subplots()
-    interval =15
+    interval =100
     my_path = os.getcwd() 
     newDir = "Ex fields"
-   
-    
     path = os.path.join(my_path, newDir)
     
     try:     ##### BE VERY CAREFUL! THIS DELETES THE FOLDER AT THE PATH DESTINATION!!!!
@@ -49,11 +47,13 @@ def VideoMaker(P,V):
     for i in range(0, P.timeSteps, interval):
         print(str.format('{0:.2f}', (100/(P.timeSteps/(i+1)))),"% complete")
         ax.clear()
-        ax.set_xlim(0, P.Nz*1.2)
+        ax.set_xlim(0, P.Nz)
         ax.set_ylim(-2,2)
         ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
-        ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
-        ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
+        if P.CPMLXm == True:
+            ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
+        if P.CPMLXp == True:
+            ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
         ax.axvspan(P.x1Loc, P.x1Loc+2 , alpha=1, color='black')
         ax.axvspan(P.x2Loc, P.x2Loc+2 , alpha=1, color='red')
         ax.plot(np.real(V.Ex_History[i]))    
