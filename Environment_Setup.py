@@ -30,7 +30,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     Nlam=80
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)#/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)*0.75#/(P.c0*np.sqrt(1/(P.dz**2)))
     print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
@@ -41,7 +41,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     if courantNo > 3 or courantNo <0:
         print(courantNo, "courantNo is unstable")
         sys.exit()
-    pmlWidth =10*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
+    pmlWidth =6*int(lamMin/dz) #+int((30*P.freq_in)/1e9)
     #print('pmlWidth = ' , P.pmlWidth)
     if (pmlWidth >= 12000):
         print('pmlWidth too big', pmlWidth)
@@ -96,7 +96,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     
     print('timesteps: ', timeSteps)
     
-    if(timeSteps >= 15000):
+    if(timeSteps >= 2**15):
         print('timeSteps too large')
         sys.exit()
     t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
@@ -114,7 +114,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 18*int(lamMin/dz)
+    MaterialDistFromPml = 20*int(lamMin/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1

@@ -38,7 +38,7 @@ def FieldInit(V,P):
             if type(P.timeSteps) != int:
                 raise TypeError('Number of timeSteps must be positive integer valued')
                 break
-            if P.timeSteps > 2**14:
+            if P.timeSteps > 2**15:
                 raise ValueError('timeSteps max too large')
                 break
             if P.Nz > 25000:
@@ -359,11 +359,11 @@ forLocals = {'zeta0': float64[:], 'zeta1':float64[:]}
 
 @jit(nopython = True, locals=forLocals, debug =True)
 def CPML_Psi_e_Update(V,P, C_V, C_P): 
-    #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
-   # zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
+   zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
+   zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
    if P.CPMLXm ==True:
        for nz in range(1, P.pmlWidth): 
-            C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
+            C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] +C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
             V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz]
    if P.CPMLXp ==True:
        for nz in range(len(V.Ex)- P.pmlWidth, len(V.Ex)): 
@@ -378,14 +378,16 @@ def CPML_Psi_e_Update(V,P, C_V, C_P):
        breakpoint()
    """
    return C_V.psi_Ex, V.Ex 
+
+
 ########################### DELIBERATELY BROKEN, FIX THIS TOMORROW!
 @jit(nopython = True, locals=forLocals, debug =True)
 def CPML_Psi_m_Update(V,P, C_V, C_P): 
-    #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
-    #zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
+    zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
+    zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
     if P.CPMLXm ==True:
        for nz in range(1, P.pmlWidth): 
-        C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
+        C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz]+ C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
         V.Hy[nz] = V.Hy[nz] + C_V.C2[nz]*C_V.psi_Hy[nz]
     if P.CPMLXp ==True:
        for nz in range(len(V.Ex)- P.pmlWidth, len(V.Ex)-1): 
@@ -492,23 +494,60 @@ def CPML_Plot_Scaling(V, P, C_V, C_P):
     """
     pass
 
-@nj
+#@nj
 def ADE_TempPolCurr(V,P, C_V, C_P):
-     for nz in range(1, P.Nz-1):
-         V.tempTempVarPol[nz] = V.tempVarPol[nz]
-         V.tempVarPol[nz] = V.polarisationCurr[nz] 
-         V.tempTempVarE[nz] = V.tempVarE[nz] 
-         V.tempVarE[nz] = V.Ex[nz] 
-         V.tempTempVarHy[nz] = V.tempVarHy[nz]
-         V.tempVarHy[nz]=V.Hy[nz]
-         V.tempTempVarJx[nz] = V.tempVarJx[nz]
-         V.tempVarJx[nz] = V.Jx[nz]
-         C_V.tempTempVarPsiEx[nz] = C_V.tempVarPsiEx[nz]
-         C_V.tempVarPsiEx[nz] = C_V.psi_Ex[nz]
-         C_V.tempTempVarPsiHy[nz] = C_V.tempVarPsiHy[nz]
-         C_V.tempVarPsiHy[nz] = C_V.psi_Hy[nz]
-         
+    # V.tempTempTest = V.tempTest
+    # V.tempTest = V.test
+     """
+     strange issue with ndarrays in for loop, can't have temporary previous 
+     field stored for some reason makes current and previous fields equal?
+     Works with as expected as list however, so convert to list here, 
+     then back to ndarray before returning.
+     This func can't be numba func because of dynamic typing.
+     """
+     tempTempVarPol = V.tempTempVarPol
+     tempTempVarPol = tempTempVarPol.tolist()
+     tempVarPol = V.tempVarPol
+     tempVarPol = tempVarPol.tolist()
+     polarisationCurr = V.polarisationCurr
+     polarisationCurr = polarisationCurr.tolist()
+     tempTempVarE = V.tempTempVarE
+     tempTempVarE= tempTempVarE.tolist()
+     tempVarE =V.tempVarE
+     tempVarE = tempVarE.tolist()
+     Ex = V.Ex
+     Ex = Ex.tolist()
+     ##########
+     
+     tempTempVarPol = tempVarPol
+     tempVarPol = polarisationCurr         
+     V.tempTempVarDx = V.tempVarDx
+     V.tempVarDx = V.Dx
+     tempTempVarE = tempVarE 
+     tempVarE = Ex 
+     V.tempTempVarHy = V.tempVarHy
+     V.tempVarHy=V.Hy
+     V.tempTempVarJx = V.tempVarJx
+     V.tempVarJx = V.Jx
+     C_V.tempTempVarPsiEx = C_V.tempVarPsiEx
+     C_V.tempVarPsiEx = C_V.psi_Ex
+     C_V.tempTempVarPsiHy = C_V.tempVarPsiHy
+     C_V.tempVarPsiHy = C_V.psi_Hy
+     
+     
+     #### reconvert 
+     
+     V.tempTempVarPol = np.asarray(tempTempVarPol)
+     V.tempVarPol = np.asarray(tempVarPol)
+     V.polarisationCurr = np.asarray(polarisationCurr)
+     V.tempTempVarE = np.asarray(tempTempVarE)
+     V.tempVarE =np.asarray(tempVarE)
+     V.Ex = np.asarray(Ex)
+     if np.max(np.abs(V.polarisationCurr)) >0:
+         if np.max(np.abs(V.polarisationCurr - V.tempTempVarPol)) ==0:
+             breakpoint()
      return V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy
+
 forlocalsJ ={'coef' : float64, 'V.Jx' : float64[:]} 
 
 @jit(nopython=True, locals=forlocalsJ)
@@ -535,23 +574,37 @@ def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?    NOT USING THIS IN CURREN
     return V.Jx
     # find paper
 
-@nj
-def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P):   #FIND ADE PAPER!
-    
-  
-    D= 1+V.gammaE*P.delT
+#@nj
+def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts):   #FIND ADE PAPER!
+    """
+    s0=(1/delt^2)+(gamae/(2*delt))
+   s1=((2/delt^2)-woe^2)/s0
+   s2=((gamae/(2*delt))-1/delt^2)/s0;
+   s3=(eps0*wpe^2)/s0;
+   foe=2*pi*0.1591e9; woe=2*pi*foe;fom=foe; wom=woe;
+fpe=1.1027e9; wpe=2*pi*fpe;fpm=fpe;  wpm=wpe;
+gamae=0; gamam=gamae;
+    """
+    D= (1/P.delT**2)+(V.gammaE/(2*P.delT))#1+V.gammaE*P.delT*V.omega_0E
     #print("D ", D)
-    A = (2-V.omega_0E*P.delT*P.delT)/D
+    A = ((2/P.delT**2)-V.omega_0E**2)/D#(2-V.omega_0E*V.omega_0E*P.delT*P.delT)/D
     #print("A", A)
-    B =(V.gammaE*P.delT-1)/D
+    B =((V.gammaE/(2*P.delT))-1/P.delT**2)/D#(V.gammaE*V.omega_0E*P.delT-1)/D
     #print(B)
-    C = (V.gammaE*P.delT*P.delT)/D
-    #print(C)
-  
-    for nz in range (int(P.materialFrontEdge-1), int(P.materialRearEdge)):
-        V.polarisationCurr[nz] = A*V.tempVarPol[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]
+    C = (P.permit_0*V.plasmaFreqE**2)/D
+    
+   
+    #if np.max(np.abs(V.polarisationCurr))>0:
+     #   breakpoint()
+    for nz in range (int(P.materialFrontEdge), int(P.materialRearEdge)):
+        V.polarisationCurr[nz] = A*V.polarisationCurr[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]
    # print("max polarisation vals ", np.max(V.polarisationCurr))
+    #if(np.max(np.abs(V.polarisationCurr))) >0:
+     #   breakpoint()
+   # if(np.max(np.abs(V.polarisationCurr)))>0:
+    #     breakpoint()
     return V.polarisationCurr
+
 # textbook for linear polarisation
 #Elsherbeni, Atef Z. Demir, Veysel. (2016). Finite-Difference Time-Domain Method for Electromagnetics with MATLAB® Simulations (2nd Edition) - 13.1.3 Modeling Drude Medium Using ADE Technique. Institution of Engineering and Technology. Retrieved from
 #https://app.knovel.com/hotlink/pdf/id:kt010WVJ54/finite-difference-time/modeling-drude-medium
@@ -579,37 +632,28 @@ def ADE_MyUpdate():
     
     pass
 
-forlocalsAEX= { 'betaE': float64, 'kapE' : float64 }
+forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
 @jit(nopython = True,locals=  forlocalsAEX )
-def ADE_ExUpdate(V, P, C_V, C_P): 
-    
-    
-   # matLoc = np.zeros(P.Nz+1)
-    
-   #matLoc[P.materialFrontEdge-1:P.materialRearEdge-1] =np.ones(P.materialRearEdge-P.materialFrontEdge)
-    
-   # plas = V.plasmaFreqE*matLoc
-    
-    
+def ADE_ExUpdate(V, P, C_V, C_P, counts): 
+   
     betaE = (0.5*V.plasmaFreqE*V.plasmaFreqE*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
     kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
-    
-    #selfCo = (2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT)
-    
-    #HCurlCo= (2*P.delT)/(P.dz*(2*P.permit_0+betaE*P.delT))
-    #print(np.max(HCurlCo), np.max(selfCo), "co-ef")
-   # print(np.max(betaE), np.max(kapE), np.max(selfCo), np.max(HCurlCo), "MAXS")
-    #0.5*(1+kapE)
-    for nz in range(1, P.Nz):
-       # V.tempTempVarE[nz] = V.tempVarE[nz]
-        #V.tempVarE[nz] = V.Ex[nz]
-       # V.Ex[nz] =V.Ex[nz] + (V.Hy[nz] - V.Hy[nz-1]])#*(1/P.courantNo)#*((2*P.delT)/(2*P.permit_0+betaE*P.delT))*(1/P.courantNo)*C_V.den_Exdz[nz]
-       # ((2*P.permit_0-betaE*P.delT)/(2*P.permit_0+betaE*P.delT))
-    
-       ###### actual line
-         V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz]) #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
-       
-      ####### 
+    epsInf = 3
+   # e2 = P.delT/(P.permit_0+0.5*P.delT*0); 
+    for nz in range(1, len(V.Ex)):
+         
+        V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]#-(1/(epsInf))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
+        
+    #if P.LorentzMed == True:
+     #   for nz in range(P.materialRearEdge, len(V.Ex)):
+             
+      #       V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]-(1/(2*P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
+   #elif P.LorentzMed == False:
+    #    for nz in range(1, len(V.Ex)):
+     #        
+      #           V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]#-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
+             
+        ####### 
        # V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*1-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz]) #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
        #.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]# +V.Jx[nz]
     """
@@ -622,23 +666,28 @@ def ADE_ExUpdate(V, P, C_V, C_P):
 
 
  
-@nj
+#@nj
 def ADE_ExCreate(V, P, C_V, C_P):
-    for nz in range(1, P.Nz+1):
-       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
+    #Dxn = (V.Dx-V.tempTempVarDx)/2#
+    for nz in range(P.materialFrontEdge, P.materialRearEdge):
+       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/(P.permit_0)
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
+    #if(np.max(np.abs(V.Ex[P.materialFrontEdge: P.materialRearEdge])))>2:
+     #   breakpoint()
     return V.Ex
 
-@nj
+#@nj
 def ADE_DxUpdate(V, P, C_V, C_P):
-    for nz in range(1, P.Nz+1):
+    for nz in range(P.materialFrontEdge, P.materialRearEdge):
         V.Dx[nz] =V.Dx[nz] + (V.Hy[nz]-V.Hy[nz-1])*(P.delT/(P.dz))*C_V.den_Exdz[nz]
         #print(V.Dx[nz])
        # V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/P.permit_0
         #if abs(V.Dx[nz]) >1e-4:
             #print("Dx", V.Dx[nz], nz)
+    #if(np.max(np.abs(V.Dx))) >0:
+     #breakpoint()
     return V.Dx
 
 
@@ -651,11 +700,11 @@ def MUR1DEx(V,P, C_V, C_P):
     #nz = 2
     #V.Ex[nz] = V.tempTempVarE[nz+1] + murMult*(V.Ex[nz+1] - V.tempTempVarE[nz])
     #backwards for loop
-    for nz in range(1, 95):
+    for nz in range(1, 5):
         V.Ex[nz] = V.tempTempVarE[nz+1] + murMult*(V.Ex[nz+1] - V.tempTempVarE[nz])
     #if V.Ex[nz] !=0:
       #  print("Ex is nonzero: ", V.Ex[nz])
-    for nz in range(P.Nz-1, P.Nz-95, -1):
+    for nz in range(P.Nz-1, P.Nz-6, -1):
          V.Ex[nz] = V.tempTempVarE[nz-1] + murMult*(V.Ex[nz-1] - V.tempTempVarE[nz])
     #nz = P.Nz-1
    
@@ -666,17 +715,18 @@ def MUR1DEx(V,P, C_V, C_P):
 
 
 def AnalyticalReflectionE(V, P):
+    pi = np.pi
     epsNum = (V.plasmaFreqE*V.plasmaFreqE)
-    epsDom = (V.omega_0E*V.omega_0E-(P.freq_in*P.freq_in) - 1j*V.gammaE*P.freq_in)
+    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) - 1j*V.gammaE*2*pi*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
     # INTERESTING BUG WITH ARCSIN INVALID VALUE, UNIT TEST 
     mu =1
-    imp1 = 1
-    imp2 = np.sqrt(mu/np.real(epsilon)+0j)
-    trans = (2*imp2)/(imp1+imp2)
+    refr = 1 # factored out 377 ohms
+    refr2 = np.real(np.sqrt(epsilon))
+    trans = abs((2*refr2)/(refr+refr2))
     #print(abs(trans), "transmission")
-    reflection = (imp2-imp1)/(imp1+imp2)
+    reflection = abs((refr2-refr)/(refr+refr2))
     #print(abs(reflection), "reflection analytical")
     #print(abs(trans)+abs(reflection), "sum of trans and reflection")
     realV = P.c0/(np.sqrt(abs(np.real(epsilon))))
@@ -696,7 +746,7 @@ def AnalyticalReflectionE(V, P):
     
    
     
-    return reflectionNormInc
+    return reflection
 
 
 

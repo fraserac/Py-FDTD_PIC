@@ -14,7 +14,7 @@ import matplotlib.pylab as plt
 import genericStability as gStab
  
 
-from TransformHandler import genFourierTrans as gft
+#from TransformHandler import genFourierTrans as gft
 #import TransformHandler as tHand
 import winsound
 import pyttsx3
@@ -110,8 +110,8 @@ specV = [('Nz', int32),
     ('mu', float64[:]), 
     ('polarisationCurr', float64[:]),
     ('plasmaFreqE', float64),
-    ('gammaE', float32),
-    ('omega_0E', float32),
+    ('gammaE', float64),
+    ('omega_0E', float64),
     ('tempVarPol', float64[:]),
     ('tempTempVarPol', float64[:]),
     ('tempVarE', float64[:]),
@@ -119,7 +119,12 @@ specV = [('Nz', int32),
     ('tempVarHy', float64[:]),
     ('tempTempVarHy', float64[:]),
     ('tempVarJx', float64[:]),
-    ('tempTempVarJx', float64[:])]
+    ('tempTempVarJx', float64[:]), 
+    ('tempVarDx', float64[:]),
+    ('tempTempVarDx', float64[:]), 
+    ('test', int32),
+    ('tempTest', float64[:]),
+    ('tempTempTest', int32)]
          
 @jclass(specV)
 class Variables(object):
@@ -152,9 +157,9 @@ class Variables(object):
         self.epsilon = np.ones(Nz)
         self.mu = np.ones(Nz)
         self.polarisationCurr = np.zeros(Nz)
-        self.plasmaFreqE = 3.483316294887078e+16
-        self.gammaE = 2*0.28e16
-        self.omega_0E= 4e16
+        self.plasmaFreqE = 1.5*40*np.pi*1e9
+        self.gammaE = 0#40*np.pi*1e9*0.1
+        self.omega_0E= 40*np.pi*1e9
         self.tempVarPol =np.zeros(Nz)
         self.tempTempVarPol =np.zeros(Nz)
         self.tempVarE =np.zeros(Nz)
@@ -163,6 +168,11 @@ class Variables(object):
         self.tempTempVarHy =np.zeros(Nz)
         self.tempVarJx =np.zeros(Nz)
         self.tempTempVarJx =np.zeros(Nz)
+        self.tempVarDx = np.zeros(Nz)
+        self.tempTempVarDx = np.zeros(Nz)
+        self.test =5
+        self.tempTest = np.zeros(Nz)
+        self.tempTempTest= 0
         
         
     def __str__(self):
@@ -301,14 +311,14 @@ specCP = [('kappaMax',float32),
 @jclass(specCP)   # with PLRC-CPML alpha seems to have larger stable range
 class CPML_Params(object):  # good params: KappaMax , sigmaEMax ,alphamax , nlam , 
     def __init__(self, dz):
-        self.kappaMax =7 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+        self.kappaMax =2 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
         self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
         self.r_a_scale=1
-        self.sigmaEMax= 1*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.sigmaEMax= 0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
         self.sigmaHMax =self.sigmaHMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
         self.sigmaOpt  =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
     #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
-        self.alphaMax=0.2# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.alphaMax=0.1# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
     
     def __repr__(self):
         return (f'{self.__class__.__name__}')
@@ -461,7 +471,7 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, Exs, Hys, probeReadStartBe, probeReadSta
                     
                 #if counts%(int(P.timeSteps/10)) == 0:
                  #   print("timestep progress:", counts, "/", P.timeSteps)
-                V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P)
+                V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P, counts)
                 if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
                     C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
                 
@@ -499,6 +509,7 @@ def IntegratorNL1D(V,P,C_V,C_P):
     
 def integratorLinLor1D(V, P, C_V, C_P,Exs, Hys, probeReadStartBe, probeReadStartAf):
     for i in range(0,2):
+        
         V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
         #analReflectCo, dispPhaseVel, realV = BaseFDTD11.AnalyticalReflectionE(V,P)
         
@@ -510,28 +521,39 @@ def integratorLinLor1D(V, P, C_V, C_P,Exs, Hys, probeReadStartBe, probeReadStart
         lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
         Exs, Hys = SourceManager(V, P, C_V, C_P, Exs, Hys)
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
+        V.test = 0
+        
         for counts in range(0,P.timeSteps):
+           V.test +=1
+           
+          
+           
+           #
+           
+        
+           
+           if i == 1:
+                V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
+                V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
                 
-            
-           V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P)
+           V.Ex =BaseFDTD11.ADE_ExUpdate(V, P, C_V, C_P, counts) 
+                # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)  
+           
            if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
                     C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-                
-           V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-           if i == 1:
-                V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P)
-                # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)  
-             
+                  
            V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
+           
            if P.TFSF == True:
                 V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
-            
-            
+                
+           V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)
+           V.Ex =BaseFDTD11.ADE_ExCreate(V, P, C_V, C_P) 
            V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
            if P.CPMLXp == True or P.CPMLXm == True:
                    C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
             
-            
+           #V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
            
             #C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
            # V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)    
@@ -542,8 +564,8 @@ def integratorLinLor1D(V, P, C_V, C_P,Exs, Hys, probeReadStartBe, probeReadStart
             #C_V.Psi_e_History[counts] = C_V.psi_Ex
             #
             #V.Jx_History[counts] = V.Jx
-            #V.Dx_History[counts] = V.Dx
-            #V.polCurr_History[counts] = V.polarisationCurr
+          # V.Dx_History[counts] = V.tempTempVarPol
+           #V.polCurr_History[counts] = V.polarisationCurr
                
            if i == 0:
                 if counts <= P.timeSteps-1:
@@ -698,12 +720,12 @@ def __Main__():
     print("Code started at: ", startedTime)
     
     MORmode = False
-    domainSize=2000
-    freq_in =4e16
+    domainSize=2500
+    freq_in =6e9
     delayMOR =20
     noOfEnvOuts = 20
     setupReturn = []*noOfEnvOuts
-    setupReturn =envDef.envSetup(freq_in, domainSize,6000,6400)   # this function returns a list with all evaluated model parameters
+    setupReturn =envDef.envSetup(freq_in, domainSize,9000,11500)   # this function returns a list with all evaluated model parameters
     P= Params(*setupReturn, MORmode, domainSize, freq_in, delayMOR) #be careful with tuple, check ordering of parameters 
     V=Variables(P.Nz, P.timeSteps)
     C_P = CPML_Params(P.dz)
@@ -717,7 +739,7 @@ def __Main__():
     P.Gaussian =False
     P.SineCont = True   # Set up smoothturn on for multiple repeats
     P.Periods = 10
-    P.LorentzMed =True # MAKE SURE EPSRE IS 1
+    P.LorentzMed=True # MAKE SURE EPSRE IS 1
     ticK = tim.perf_counter()
     
     
