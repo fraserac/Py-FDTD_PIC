@@ -12,7 +12,7 @@ import cv2
 import natsort
 import numpy as np
 import scipy as sci
-
+from tqdm import tqdm
 import matplotlib.pylab as plt
 
 
@@ -44,8 +44,8 @@ def VideoMaker(P,V):
     
     #these plots are converted to png files and saved in the new folder in the working directory
     """
-    for i in range(0, P.timeSteps, interval):
-        print(str.format('{0:.2f}', (100/(P.timeSteps/(i+1)))),"% complete")
+    for i in tqdm(range(0, len(V.Ex_History))):
+      ##breakpoint()
         ax.clear()
         ax.set_xlim(0, P.Nz)
         ax.set_ylim(-2,2)
@@ -56,8 +56,9 @@ def VideoMaker(P,V):
             ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
         ax.axvspan(P.x1Loc, P.x1Loc+2 , alpha=1, color='black')
         ax.axvspan(P.x2Loc, P.x2Loc+2 , alpha=1, color='red')
+        
         ax.plot(np.real(V.Ex_History[i]))    
-        stringTit = "Ex @ ", str(P.delT*i), "seconds"
+        stringTit = "Ex @ timeStep", str(i)
         plt.title(stringTit)
         plt.savefig(path + "/" + str(i) + ".png")
     

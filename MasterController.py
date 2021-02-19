@@ -12,7 +12,7 @@ import scipy as sci
 from scipy import sparse 
 import matplotlib.pylab as plt
 import genericStability as gStab
- 
+from tqdm import tqdm 
 
 #from TransformHandler import genFourierTrans as gft
 #import TransformHandler as tHand
@@ -21,7 +21,7 @@ import pyttsx3
 
 from numba import jit
 from numba import njit as nj 
-from numba import jitclass as jclass
+from numba.experimental import jitclass as jclass
 from numba import int32, float32, int64, float64, boolean
 from numba.typed import Dict
 from numba.types import DictType, List, string, optional
@@ -124,12 +124,22 @@ specV = [('Nz', int32),
     ('tempTempVarDx', float64[:]), 
     ('test', int32),
     ('tempTest', float64[:]),
-    ('tempTempTest', int32)]
+    ('tempTempTest', int32), 
+    ('attenAmnt', int32),
+    ('x1Atten', float64[:,:]),
+    ('Gx3', float64[:]),
+    ('alpha3', float32),
+    ('Qx3', float64[:]),
+    ('Pbar3', float64[:]), 
+    ('nonLin3gammaE', float64),
+    ('nonLin3Omega_0E', float64),
+    ('chi1Stat', float64),
+    ('chi3Stat', float64)]
          
 @jclass(specV)
 class Variables(object):
 
-    def __init__(self, Nz, timeSteps):
+    def __init__(self, Nz, timeSteps, interval, attenAmnt):
         Nz = Nz+1
         self.UpHyMat = np.ones(Nz)
         self.UpExMat = np.ones(Nz)
@@ -141,12 +151,13 @@ class Variables(object):
         self.Hy = np.zeros(Nz)
         self.Dx = np.zeros(Nz)
         self.Jx = np.zeros(Nz)
-        self.Ex_History= np.zeros((Nz)*timeSteps).reshape(timeSteps, (Nz))
-        self.Hy_History = np.zeros((Nz)*timeSteps).reshape(timeSteps, (Nz))
-        self.Jx_History = np.zeros((Nz)*timeSteps).reshape(timeSteps, (Nz))
-        self.polCurr_History = np.zeros((Nz)*timeSteps).reshape(timeSteps, (Nz))
-        self.Dx_History = np.zeros((Nz)*timeSteps).reshape(timeSteps, (Nz))
-        self.Psi_e_History =np.zeros((Nz)*timeSteps).reshape(timeSteps, (Nz))
+        self.Ex_History= np.zeros((Nz)*int(timeSteps/interval)).reshape(int(timeSteps/interval), (Nz))
+        #### fix below shapes 
+        self.Hy_History = np.zeros((Nz)*int(timeSteps/interval)).reshape(int(timeSteps/interval), (Nz))
+        self.Jx_History = np.zeros((Nz)*int(timeSteps/interval)).reshape(int(timeSteps/interval), (Nz))
+        self.polCurr_History = np.zeros((Nz)*int(timeSteps/interval)).reshape(int(timeSteps/interval), (Nz))
+        self.Dx_History = np.zeros((Nz)*int(timeSteps/interval)).reshape(int(timeSteps/interval), (Nz))
+        self.Psi_e_History =np.zeros((Nz)*int(timeSteps/interval)).reshape(int(timeSteps/interval), (Nz))
         self.x1ColBe = np.zeros(timeSteps)
         self.x1ColAf = np.zeros(timeSteps)
         self.x1Jx = np.zeros(timeSteps)
@@ -157,9 +168,9 @@ class Variables(object):
         self.epsilon = np.ones(Nz)
         self.mu = np.ones(Nz)
         self.polarisationCurr = np.zeros(Nz)
-        self.plasmaFreqE = 1.5*40*np.pi*1e9
-        self.gammaE = 0#40*np.pi*1e9*0.1
-        self.omega_0E= 40*np.pi*1e9
+        self.plasmaFreqE =(0.617*2*np.pi*3e9)
+        self.gammaE = 0#2*2*np.pi*20e9*0.1
+        self.omega_0E= 2.7537e9
         self.tempVarPol =np.zeros(Nz)
         self.tempTempVarPol =np.zeros(Nz)
         self.tempVarE =np.zeros(Nz)
@@ -172,9 +183,20 @@ class Variables(object):
         self.tempTempVarDx = np.zeros(Nz)
         self.test =5
         self.tempTest = np.zeros(Nz)
-        self.tempTempTest= 0
+        self.tempTempTest= 0#
+        self.attenAmnt = attenAmnt
+        self.x1Atten = np.zeros(attenAmnt*timeSteps).reshape(attenAmnt, timeSteps)
+        self.Gx3 = np.zeros(Nz)
+        self.alpha3 = 0.7
+        self.Qx3 = np.zeros(Nz)
+        self.Pbar3 = np.zeros(Nz)
+        self.nonLin3gammaE = 3.1250e13
+        self.nonLin3Omega_0E = 8.7722e13
+        self.chi1Stat = 0.69617
+        self.chi3Stat = 1.94e-1
         
         
+
     def __str__(self):
         return 'Contains data that will change during sim'
     
@@ -243,14 +265,18 @@ specP=[('Nz', int32),
     ('Amplitude', float32),
     ('Periods', float32),
     ('LorentzMed', boolean), 
+    ('nonLinMed', boolean),
     ('FreeSpace', boolean), 
     ('epsRe', float32), 
-    ('muRe', float32)]
+    ('muRe', float32), 
+    ('vidMake', boolean ),
+    ('vidInterval', int32), 
+    ('atten', boolean)]
 
 
 @jclass(specP)
 class Params(object):
-    def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in, delayMOR):
+    def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in, delayMOR, LorentzMed = False, nonLinMed = False, SineCont = False, Gaussian = False, TFSF = False):
         
         self.permit_0 = sci.constants.epsilon_0
         self.permea_0 = sci.constants.mu_0
@@ -282,17 +308,20 @@ class Params(object):
         self.delayMOR = delayMOR
         self.CPMLXp = False
         self.CPMLXm = False
-        self.TFSF = False
-        self.SineCont = False
-        self.Gaussian = False
+        self.TFSF = TFSF
+        self.SineCont = SineCont
+        self.Gaussian = Gaussian 
         self.Ricker = False
         self.Amplitude = 1.0
         self.Periods = 1.0
-        self.LorentzMed = False
+        self.LorentzMed = LorentzMed
+        self.nonLinMed = nonLinMed
         self.FreeSpace = True
         self.epsRe = 1.0
-        self.muRe = 1.0
-        
+        self.muRe = 1.
+        self.vidMake = True
+        self.vidInterval = 50
+        self.atten = False
     def __repr__(self):
         return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
     
@@ -358,6 +387,7 @@ specCV = [('Nz', int32),
           ('tempVarPsiHy', float64[:]),
           ('psi_Ex_Old', float64[:]),
           ('psi_Hy_Old', float64[:])]
+ 
 @jclass(specCV)
 class CPML_Variables(object):
     def __init__(self, Nz, timeSteps):
@@ -404,6 +434,56 @@ class CPML_Variables(object):
 #Initialises all vars (NOT NECESSARY if instantiating class each time) 
 #BASEFDTD update equations for loop for time stepping, move to numba function integrator
 #@nj
+def probeSim(V, P, C_V, C_P, counts, val = "null", af = False, granAttn = 25,  whichField = "Ex", attenRead = False ):
+    """
+    Take current value of whatever quantity is being probed from
+    and add to x1ColBe or x1ColAf array. 
+    """
+    
+    
+        #Multi layer probe plot choice of layer granularity? 10 as default. 
+        #Functions basically the same as the other probes, but starts at 
+        #matfront +5 then adds probes at chosen spaces and frequency.
+        #eventually fourier transform each row of 2d array and return 
+        #amplitude relative to amplitude of free space (x1ColBe) 
+        #build in optional stuff later, beers law for proper 
+        # create list of inputs: if this works, move granAttn and attenAmnt to 
+        #P class. 
+    if attenRead == True:    
+        inds = np.arange(P.materialFrontEdge, granAttn*V.attenAmnt + P.materialFrontEdge, granAttn)
+       # listOfIndAtten = [inds]
+   
+        for i in range(len(V.x1Atten)):
+            if whichField == "Ex":
+                V.x1Atten[i][counts] =  V.Ex[inds[i]]
+        return V.x1Atten
+                
+    elif af == True:
+        V.x1ColAf[counts] = val
+        return V.x1ColAf
+
+    
+    elif af == False:
+       # breakpoint()
+        V.x1ColBe[counts] = val
+    
+        return V.x1ColBe
+    
+    return "Alternative option unavailable, probeSim func"
+    
+def vidMake(V, P, C_V, C_P, counts, field, whichField = "Ex"):
+    # COUNTS WON'T MATCH UP WITH INDEX OF SHRUNK HISTORY. COUNTS/P.vidInterval?
+    # counts = zero should not be here
+
+    
+    shrunkCnt = int(counts/P.vidInterval)
+    if whichField == "Ex":
+        if shrunkCnt< len(V.Ex_History):
+            V.Ex_History[shrunkCnt] = field
+        return V.Ex_History
+    
+    return "vidMake has gone to the end of the returns "
+
 
 def boundCondManager(V, P, C_V, C_P):
     # in here we set up boundary conditions, if cpml, call relevant cpml stuff,
@@ -424,7 +504,7 @@ def boundCondManager(V, P, C_V, C_P):
         C_V.den_Exdz, C_V.den_Hydz = BaseFDTD11.denominators(V, P, C_V, C_P)
     return C_V
     
-def SourceManager(V, P, C_V, C_P, Exs, Hys ):
+def SourceManager(V, P, C_V, C_P):
     ## boolean fed into argument which chooses source to use and creates appropiately.
     if P.SineCont == True:
         Exs, Hys1 = BaseFDTD11.SmoothTurnOn(V,P)
@@ -432,8 +512,8 @@ def SourceManager(V, P, C_V, C_P, Exs, Hys ):
         Hys1 = np.asarray(Hys1)*P.courantNo
         #breakpoint()
         if P.TFSF ==True:
-            Hys = Hys1*(1/P.CharImp)
-
+            Hys1 = Hys1*(1/P.CharImp)
+        return Exs, Hys1
         #
     #if SineCont == True
          #run SineCont function with no of repeatsm time +interval between
@@ -448,9 +528,11 @@ def SourceManager(V, P, C_V, C_P, Exs, Hys ):
         # source manager changes the source point then returns whole field 
     #if Ricker == True 
         # Ricker func in basefdtd11. 
-    return Exs, Hys
+         return Exs, Hys
+     
+    return [],[]
 
-def IntegratorFreeSpace1D(V,P,C_V, C_P, Exs, Hys, probeReadStartBe, probeReadStartAf):
+def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
     for i in range(0,2):
         V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
         #analReflectCo, dispPhaseVel, realV = BaseFDTD11.AnalyticalReflectionE(V,P)
@@ -465,7 +547,12 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, Exs, Hys, probeReadStartBe, probeReadSta
       
         # PROBABLY BETTER TO RUN THIS IN LINEAR DISP INTEGRATOR
         #lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
-        Exs, Hys = SourceManager(V, P, C_V, C_P, Exs, Hys)
+        Exs, Hys = SourceManager(V, P, C_V, C_P)
+        trang= np.arange(len(Exs))*(P.delT)
+        omega_mod = 2*np.pi*(1/14.6e-15)
+        sech = lambda a : 1/np.cosh(a)
+        pulseEnv =(1+Exs)*sech(omega_mod*trang) 
+        Exs = pulseEnv
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
         for counts in range(0,P.timeSteps):
                     
@@ -476,6 +563,7 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, Exs, Hys, probeReadStartBe, probeReadSta
                     C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
                 
                 ## SOURCE MANAGER COMES IN HERE
+               
                 V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
                 if P.TFSF == True:
                     V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
@@ -489,48 +577,123 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, Exs, Hys, probeReadStartBe, probeReadSta
                 #V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
                 
                 #########################
-                V.Ex_History[counts] = V.Ex
+                
+                    
+            
+                if counts >0:
+                    if counts % P.vidInterval ==0:
+                        if i == 1:
+                            V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
+                
+                # option to not store history, and even when storing, only store in 
+                #intervals 
+                
+                
+        
                 if i == 0:
-                    if counts <= P.timeSteps-1:
-                        if counts <= probeReadStartBe:
-                            V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc]
+                     if counts <= P.timeSteps-1:
+                         if counts <= probeReadFinishBe:
+                                 V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
+                             #change this from Ex history
                 elif i ==1:
-                    if counts <= P.timeSteps-1:
-                        
-                        if counts >= probeReadStartAf:
-                            V.x1ColAf[counts] = V.Ex_History[counts][P.x2Loc]
-                            
+                         if counts <= P.timeSteps-1:
+                             if counts >= probeReadStartAf:
+                                     V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
+                                     if P.atten == True:
+                                         V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
+                                
         #FDdata, FDXaxis, FDdataPow = gft(V,P, C_V, C_P, V.x1ColBe)   # freq dom stuff for reflection
         
-    return V.Ex, V.Hy,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf   #Do I need to return C_V?
+    return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf   #Do I need to return C_V?
 
-def IntegratorNL1D(V,P,C_V,C_P):
-    pass
-    
-def integratorLinLor1D(V, P, C_V, C_P,Exs, Hys, probeReadStartBe, probeReadStartAf):
-    for i in range(0,2):
+
+
+# Need to set up options so can choose field with nonlinearity/dispersion etc
+def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
+     for i in range(0,2):
         
-        V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
-        #analReflectCo, dispPhaseVel, realV = BaseFDTD11.AnalyticalReflectionE(V,P)
+        V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)  #Not necessary?
+        
         
         V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)   
     # move these into bc manager, call bc manager from here
         C_V = BaseFDTD11.CPML_FieldInit(V,P, C_V, C_P)
         C_V = boundCondManager(V, P, C_V, C_P)
-        # PROBABLY BETTER TO RUN THIS IN LINEAR DISP INTEGRATOR
+        
         lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
-        Exs, Hys = SourceManager(V, P, C_V, C_P, Exs, Hys)
+        Exs, Hys = SourceManager(V, P, C_V, C_P)
+        
+        
+        for counts in range(0,P.timeSteps):
+          
+           
+           if i == 1:
+                V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
+                V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
+                
+           V.Ex =BaseFDTD11.ADE_ExUpdate(V, P, C_V, C_P, counts) 
+                # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)  
+           
+           if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
+                    C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
+                  
+           V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
+           
+           if P.TFSF == True:
+                V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
+                
+           V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)
+           
+           if i ==1:
+               V.Ex =BaseFDTD11.ADE_ExNonlin3Create(V, P, C_V, C_P,counts) 
+           V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
+           if P.CPMLXp == True or P.CPMLXm == True:
+                   C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
+          
+           if counts >0:
+               if counts % P.vidInterval ==0:
+                   if i == 1:
+                       V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
+           
+           # option to not store history, and even when storing, only store in 
+           #intervals 
+           
+           
+   
+           if i == 0:
+                if counts <= P.timeSteps-1:
+                    if counts <= probeReadFinishBe:
+                            V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
+                        #change this from Ex history
+           elif i ==1:
+                    if counts <= P.timeSteps-1:
+                        if counts >= probeReadStartAf:
+                                V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
+                                if P.atten == True:
+                                    V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
+                   
+     return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
+
+
+    
+def integratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf):
+    for i in range(0,2):
+        
+        V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
+        
+        
+        V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)   
+    # move these into bc manager, call bc manager from here
+        C_V = BaseFDTD11.CPML_FieldInit(V,P, C_V, C_P)
+        C_V = boundCondManager(V, P, C_V, C_P)
+        
+        lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
+        Exs, Hys = SourceManager(V, P, C_V, C_P)
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
         V.test = 0
         
         for counts in range(0,P.timeSteps):
-           V.test +=1
            
-          
-           
-           #
-           
-        
            
            if i == 1:
                 V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
@@ -556,42 +719,73 @@ def integratorLinLor1D(V, P, C_V, C_P,Exs, Hys, probeReadStartBe, probeReadStart
            #V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
            
             #C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-           # V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)    
-           V.Ex_History[counts] = V.Ex
-            #breakpoint()
-            #print(np.max(V.Ex),"Ex max")
-            #V.Psi_e_History[counts] = C_V.psi_Ex
-            #C_V.Psi_e_History[counts] = C_V.psi_Ex
-            #
-            #V.Jx_History[counts] = V.Jx
-          # V.Dx_History[counts] = V.tempTempVarPol
-           #V.polCurr_History[counts] = V.polarisationCurr
-               
+           # V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
+           
+           
+           
+           """
+           Re write probes to not require Ex_History.
+           Re write History to be optional and be taken in interval steps
+           Re write probes into a different function 
+           Create transmission probes and attenuation probes. 
+           
+           Spatial dispersion plot alongside looping parameters
+           Function which plots epsilon, mu, refractive index etc with loop
+           Rigorous reflection and transmission probe timings.
+           Beer's law vs attenuation plot 
+           
+           clean up redundant code, split big functions into smaller ones,
+           split scripts into multiple scripts. 
+           
+           Prepare for nonlinear ade (Harmonics, then resonance tuning
+           Manley-Rowe verification, resonance tuning verification?)
+           Prepare for 2D, (Extra update fields, plots, dispersion checks, 
+           2D checks angles stuff, geometry designer)
+           Simple charged particle distribution evolution. 25th Jan?
+           
+           
+           should free space pre-reflection be running Dx? Maybe just call 
+           free space integrator once?
+           
+           """
+           if counts >0:   # MOVE TO FUNCTION 
+               if counts % P.vidInterval ==0:
+                   if i == 1:
+                       V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
+           
+           # option to not store history, and even when storing, only store in 
+           #intervals 
+           
+           
+   
            if i == 0:
                 if counts <= P.timeSteps-1:
-                    if counts <= probeReadStartBe:
-                        V.x1ColBe[counts] = V.Ex_History[counts][P.x1Loc] 
+                    if counts <= probeReadFinishBe:
+                            V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
+                        #change this from Ex history
            elif i ==1:
                     if counts <= P.timeSteps-1:
                         if counts >= probeReadStartAf:
-                            V.x1ColAf[counts] = V.Ex_History[counts][P.x2Loc]
-    return V.Ex, V.Hy,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
+                                V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
+                                if P.atten == True:
+                                    V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
+    return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
 
 
-def Controller(V, P, C_V, C_P,Exs, Hys):
-    probeReadFinishBe = P.timeSteps*0.4
-    probeReadStartAf = P.timeSteps*0.3
+def Controller(V, P, C_V, C_P):
+    probeReadFinishBe = 3000
+    probeReadStartAf = 600  # More rigorous on/off criteria
     V.x1ColBe = np.zeros(P.timeSteps)
     V.x1ColAf = np.zeros(P.timeSteps)
-    Exs = np.asarray(Exs)
-    Hys = np.asarray(Hys)
 
+    
     tickee = tim.perf_counter()
     if P.LorentzMed == True:
-         V.Ex, V.Hy,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = integratorLinLor1D(V, P, C_V, C_P,Exs, Hys, probeReadFinishBe, probeReadStartAf)
+         V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = integratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
     elif P.FreeSpace == True: 
-        V.Ex, V.Hy,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = IntegratorFreeSpace1D(V, P, C_V, C_P, Exs, Hys, probeReadFinishBe, probeReadStartAf)
-        
+        V.Ex, V.Hy, Exs, Hys, C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = IntegratorFreeSpace1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
+    elif P.nonLinMed == True:
+        V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf = IntegratorNL1D(V,P,C_V,C_P,probeReadFinishBe, probeReadStartAf)
          
     
     tockee = tim.perf_counter()
@@ -605,14 +799,26 @@ def Controller(V, P, C_V, C_P,Exs, Hys):
 
 
 
-def results(V, P, C_V, C_P, time_Vec, loop = False, RefCo = False, FFT = False, AnalRefCo = False):
+def results(V, P, C_V, C_P, time_Vec,  RefCo = False, FFT = False, AnalRefCo = False, attenRead = False):
     
-    if RefCo == True:
+    valM = np.zeros(len(V.x1Atten))
+    attenCo = np.zeros(len(valM))
+    if attenRead ==True:
+        sig_pow, sample_freq, val= transH.RefTester(V,P, V.x1ColBe, 1)   
+        for i in range(len(V.x1Atten)):
+            valM[i] = transH.RefTester(V,P, V.x1Atten[i], 1, mul = True)
+
+            attenCo[i] = valM[i]/val
+        #breakpoint()
+        return attenCo
+    
+    elif RefCo == True:
     
         #transm, sig_fft1, sig_fft2, sample_freq, timePadded = 
         sig_pow, sample_freq, val= transH.RefTester(V,P, V.x1ColBe, 1)
         sig2_pow, sample_freq, val2= transH.RefTester(V,P, V.x1ColAf, 1)
-        
+       
+        #breakpoint()
         reflectCo = val2/val
         #plt.plot(sample_freq,sig_fft) 
         
@@ -622,17 +828,26 @@ def results(V, P, C_V, C_P, time_Vec, loop = False, RefCo = False, FFT = False, 
        
         
         return reflectCo
-    if AnalRefCo==True:
+    
+    elif AnalRefCo==True:
         analReflectCo= BaseFDTD11.AnalyticalReflectionE(V,P)
         return analReflectCo
+    return "results ran to end"
+    
 
-def plotter(xAxisData, yAxisData1, yAxisData2, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = " ", legend = " ", title= " "):
+def plotter(xAxisData,  yAxisData1, yAxisData2, xAxisLim = 2, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = " ", legend = " ", title= " "):
+   
+    # Add block data option for more than 2 data sets
     fig, ax = plt.subplots()
     ax.clear()
     ax.plot(xAxisData, yAxisData1)
     ax.plot(xAxisData, yAxisData2)
-    ax.set_ylim(-yAxisLim, yAxisLim)    
+    ax.set_title(title) 
+    ax.legend(legend)
+    #ax.set_ylim(-yAxisLim, yAxisLim)
+    #ax.set_xlim(-xAxisLim, xAxisLim)
     #titles and neatly formatting 
+    #breakpoint()
     
   
 InputSweepSwitch = {"Input frequency sweep": results,
@@ -640,7 +855,7 @@ InputSweepSwitch = {"Input frequency sweep": results,
   
 
 #@jit
-def LoopedSim(Rep, V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sweep", loop =False,  Low = 1e9, Interval = 1e8, RefCoBool = True):
+def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, stringparamSweep = "Input frequency sweep", loop =False,  Low = 1e9, Interval = 1e8, RefCoBool = True):
     #print("loop = ", loop)
    
     if loop == True:
@@ -649,41 +864,58 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sw
         #print(len(dataRange))
         freqDomYAxisRef =np.zeros(points)
         timeDomYAxis = np.zeros(points)       
-        freqDomYAxis2AnalRef= np.zeros(points) 
-        Exs, Hys = BaseFDTD11.SmoothTurnOn(V,P)
+        freqDomYAxis2AnalRef=  np.zeros(points)  
+       # Exs, Hys = BaseFDTD11.SmoothTurnOn(V,P)
+       
         if stringparamSweep == "Input frequency sweep":
             for loop in range(points): 
-               # matDef.matSetup(V,P,C_P,C_V, dataRange[loop] ) 
-                V, P, C_V, C_P= Controller(V, P, C_V, C_P, Exs, Hys)
+                
+                noOfEnvOuts =20
+                setupReturn = []*noOfEnvOuts
+                setupReturn =envDef.envSetup(P.freq_in, domainSize,lowLimTim,highLimTim, VExists = True, V = V, P= P)   # this function returns a list with all evaluated model parameters
+                P= Params(*setupReturn, P.MORmode, domainSize, P.freq_in, 20, LorentzMed = P.LorentzMed, SineCont = P.SineCont, Gaussian = P.Gaussian, TFSF = P.TFSF) #be careful with tuple, check ordering of parameters 
+                V=Variables(P.Nz, P.timeSteps)
+                C_P = CPML_Params(P.dz)
+                C_V = CPML_Variables(P.Nz, P.timeSteps)
+                V, P, C_V, C_P, Exs, Hys= Controller(V, P, C_V, C_P)
+                print("Max vals: Ex, Jx, Hy: ", np.max(V.x1ColBe),np.max(V.x1Jx),np.max(V.x1Hy))
                 
                 t =np.arange(0,len(V.x1ColBe))
+                #breakpoint()
+                freqDomYAxisRef[loop] = results(V, P, C_V, C_P, t, RefCo=True) # One refco y point
+                freqDomYAxis2AnalRef[loop] =results(V, P, C_V, C_P, t, AnalRefCo = True)
+                P.freq_in = P.freq_in+Interval
+                print("LOOP OF SIM, PARAMETER: ", loop)
+                print(freqDomYAxisRef[loop], freqDomYAxis2AnalRef[loop], " measured vs analytical ref")
+                print("freq_in : ", P.freq_in)
+                plt.close('all')
                 
-                freqDomYAxisRef[loop] = results(V, P, C_V, C_P, t, loop, RefCo=True) # One refco y point
-                freqDomYAxis2AnalRef[loop] =results(V, P, C_V, C_P, t, loop, AnalRefCo = True)
-                #print(freqDomYAxisRef)
                 #print(freqDomYAxis2AnalRef)
                 #print(freqDomYAxisRef, freqDomYAxis2AnalRef, "Y STUFF")
-        #plotter(dataRange, yAxisData1 =freqDomYAxisRef, yAxisData2 =freqDomYAxis2AnalRef)  
+        plotter(dataRange, yAxisData1 =freqDomYAxisRef, yAxisData2 =freqDomYAxis2AnalRef, legend = ["Measured","Analytical"], title = "Analytical vs Measured reflection")  
         
     elif loop == False:
             points =1
             freqDomYAxisRef =np.zeros(points)
             freqDomYAxis2AnalRef= np.zeros(points) 
+            freqDomAttenAmp = np.zeros(points*V.attenAmnt).reshape(points, V.attenAmnt)
             tic =tim.perf_counter()
             #source manager comes in here? Source manager can call smoothturnon when necessary
-            Exs = []
-            Hys =[]
+            
             
             toc = tim.perf_counter()
             Rep.printer(str(toc-tic), "matSetupTime")
             tic =tim.perf_counter()
-            V, P, C_V, C_P, Exs, Hys= Controller(V, P, C_V, C_P, Exs, Hys)
+            V, P, C_V, C_P, Exs, Hys= Controller(V, P, C_V, C_P)
             print("Max vals: Ex, Jx, Hy: ", np.max(V.x1ColBe),np.max(V.x1Jx),np.max(V.x1Hy))
+            #breakpoint()
             t =np.arange(0,len(V.x1ColBe))*P.delT
-            freqDomYAxisRef[0] = results(V, P, C_V, C_P, t, loop, True) # One refco y point
-            freqDomYAxis2AnalRef[0] =results(V, P, C_V, C_P, t, loop, AnalRefCo = True)
+           # freqDomYAxisRef[0] = results(V, P, C_V, C_P, t,  RefCo=True) # One refco y point
+            #freqDomYAxis2AnalRef[0] =results(V, P, C_V, C_P, t, AnalRefCo = True)
+           # freqDomAttenAmp[0] =results(V, P, C_V, C_P, t, attenRead = True)   # if working duplicate in loop = True
            # t =np.arange(0,len(V.x1ColBe))*P.delT
-            print(freqDomYAxisRef[0], freqDomYAxis2AnalRef[0], " measured vs analytical ref")
+          #  print(freqDomYAxisRef[0], freqDomYAxis2AnalRef[0], " measured vs analytical ref")#
+            #plot atten read
            #spatial = np.arange(P.Nz+1)*P.dz
             
             
@@ -693,9 +925,10 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, stringparamSweep = "Input frequency sw
             engine.say('beep')
             engine.runAndWait() 
 
-
+     
+        
             #plt.close('all')
-            return V, P, C_V, C_P, Exs, Hys
+    return V, P, C_V, C_P, Exs, Hys
     
 
 
@@ -718,40 +951,47 @@ def __Main__():
     startedAt = date.today()
     startedTime = datetime.now()  # move to report 
     print("Code started at: ", startedTime)
-    
+    loopMode = False
     MORmode = False
-    domainSize=2500
-    freq_in =6e9
+    domainSize=1500
+    lowLimTim = 3000
+    highLimTim = 4000 # More rigorous via speed of wave and dist 
+    freq_in = 1.37e14
     delayMOR =20
     noOfEnvOuts = 20
     setupReturn = []*noOfEnvOuts
-    setupReturn =envDef.envSetup(freq_in, domainSize,9000,11500)   # this function returns a list with all evaluated model parameters
+    setupReturn =envDef.envSetup(freq_in, domainSize,lowLimTim,highLimTim)   # this function returns a list with all evaluated model parameters
     P= Params(*setupReturn, MORmode, domainSize, freq_in, delayMOR) #be careful with tuple, check ordering of parameters 
-    V=Variables(P.Nz, P.timeSteps)
+    P.vidInterval = 50
+    attenAmount = 10
+    V=Variables(P.Nz, P.timeSteps, P.vidInterval, attenAmount)
     C_P = CPML_Params(P.dz)
     C_V = CPML_Variables(P.Nz, P.timeSteps)
     
     Rep = Reporter() 
+    P.atten = True 
     P.epsRe =1# 0.917**2
     P.CPMLXp =True   ### CHANGE TO Z FOR PROP DIRECTION
     P.CPMLXm =True 
-    P.TFSF = False
+    P.TFSF = True
     P.Gaussian =False
     P.SineCont = True   # Set up smoothturn on for multiple repeats
     P.Periods = 10
-    P.LorentzMed=True # MAKE SURE EPSRE IS 1
+    P.LorentzMed=False # MAKE SURE EPSRE IS 1
+    P.nonLinMed = False
     ticK = tim.perf_counter()
     
     
     
-    if P.LorentzMed == True and P.FreeSpace == True:
+    if P.LorentzMed == True:
         P.FreeSpace = False
+        P.nonLinMed = False
+    if P.nonLinMed == True:
+        P.FreeSpace = False
+        P.LorentzMed = False
     
-    
-    if(P.MORmode == False):
-        V, P, C_V, C_P, Exs, Hys = LoopedSim(Rep, V,P,C_V, C_P, P.MORmode, loop = False, Low =P.freq_in)
-    elif(P.MORmode == True):
-        R, F, UnP1, V.Ex, V.Hy = LoopedSim(Rep,V,P,C_V, C_P, P.MORmode, loop = False, Low =P.freq_in)
+  
+    V, P, C_V, C_P, Exs, Hys = LoopedSim(Rep,V,P,C_V, C_P, P.MORmode, domainSize, lowLimTim, highLimTim, loop = loopMode, Low =P.freq_in, Interval = 2e9)
     tocK = tim.perf_counter()
     Rep.printer(str(tocK-ticK), "LoopMainTime")
     templateEnv = env(loader = fsl('.'))

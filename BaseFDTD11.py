@@ -6,6 +6,8 @@ This script is the engine that will calculate field updates and plotting functio
 The plotting and animation functionality may eventually be moved to a separate script.
 This script will eventually just contain the update equations and animation
 
+
+
 """
 
 import numpy as np
@@ -575,6 +577,49 @@ def ADE_JxUpdate(V,P, C_V,C_P): #timestep t+1/2, FM?    NOT USING THIS IN CURREN
     # find paper
 
 #@nj
+def ADE_NonLin_Pol_Ex_Pbar(V, P): #Charles Varin: Explicit formulation of second and third order optical nonlinearity in the FDTD framework 
+    #This function creates J linear,J_{inst Kerr}, J_{Raman}
+    #Keep current polCurr method as it seems to work for lin lorentz. displacement D? keep same, but treat nonlinear with their J method, extra step Ex - Jnl
+    if np.max(np.abs(V.Pbar3))> 1e-20:
+        breakpoint() # COULD BE A PROBLEM WITH ARRAY ELEMENTS VS ARRAY AS A WHOLE MAYBE WITH FOR LOOP?
+    for nz in range (int(P.materialFrontEdge), int(P.materialRearEdge)): 
+        V.Pbar3[nz] = P.permit_0* (V.chi1Stat*V.Ex[nz] + V.chi3Stat*(V.alpha3* V.Ex[nz]*V.Ex[nz]*V.Ex[nz] + (1-V.alpha3)*V.Qx3[nz]*V.Ex[nz])) 
+    
+    return V.Pbar3
+
+
+#@nj
+def ADE_Lin_Curr_And_Pol_Varin(V, P):
+    # Linear lorentz dispersion skeleton from Varin paper
+    
+    Gamma = (V.gammaE*P.delT)/2
+    A = 1- Gamma
+    D = 1+Gamma
+    B = V.omega_0E*V.omega_0E*P.delT
+    #if np.max(np.abs(V.Jx))> 0:
+       # breakpoint()
+    for nz in range (int(P.materialFrontEdge), int(P.materialRearEdge)): 
+        V.Jx[nz] = (A/D)*V.Jx[nz] + (B/D)*(V.Pbar3[nz] -V.polarisationCurr[nz])
+        V.polarisationCurr[nz] = V.polarisationCurr[nz] + P.delT *V.Jx[nz]
+    
+    
+    return V.Jx, V.polarisationCurr
+
+#@nj
+def ADE_Nonlin_Q_and_G(V, P):
+    
+    Gamma = (V.nonLin3gammaE*P.delT)/2
+    e = 1- Gamma
+    f = 1+Gamma
+    h = V.nonLin3Omega_0E*V.nonLin3Omega_0E*P.delT
+   # if np.max(np.abs(V.Gx3))> 0:
+     #   breakpoint()
+    for nz in range (int(P.materialFrontEdge), int(P.materialRearEdge)): 
+        V.Gx3[nz] = (e/f)*V.Gx3[nz] + (h/f)*(V.Ex[nz]*V.Ex[nz] - V.Qx3[nz])
+        V.Qx3[nz] = V.Qx3[nz] + P.delT*V.Gx3[nz]
+    
+    return V.Gx3, V.Qx3, V.Ex
+
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts):   #FIND ADE PAPER!
     """
     s0=(1/delt^2)+(gamae/(2*delt))
@@ -594,15 +639,10 @@ gamae=0; gamam=gamae;
     C = (P.permit_0*V.plasmaFreqE**2)/D
     
    
-    #if np.max(np.abs(V.polarisationCurr))>0:
-     #   breakpoint()
-    for nz in range (int(P.materialFrontEdge), int(P.materialRearEdge)):
+  
+    for nz in range (int(P.materialFrontEdge), int(P.materialRearEdge)): # Does this need to be a for loop?
         V.polarisationCurr[nz] = A*V.polarisationCurr[nz]+ B*V.tempTempVarPol[nz] +C*V.Ex[nz]
-   # print("max polarisation vals ", np.max(V.polarisationCurr))
-    #if(np.max(np.abs(V.polarisationCurr))) >0:
-     #   breakpoint()
-   # if(np.max(np.abs(V.polarisationCurr)))>0:
-    #     breakpoint()
+  
     return V.polarisationCurr
 
 # textbook for linear polarisation
@@ -636,26 +676,13 @@ forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
 @jit(nopython = True,locals=  forlocalsAEX )
 def ADE_ExUpdate(V, P, C_V, C_P, counts): 
    
-    betaE = (0.5*V.plasmaFreqE*V.plasmaFreqE*P.permit_0*P.delT)/(1+0.5*V.gammaE*P.delT)
-    kapE = (1-0.5*V.gammaE*P.delT)/(1+0.5*V.gammaE*P.delT)
-    epsInf = 3
-   # e2 = P.delT/(P.permit_0+0.5*P.delT*0); 
+   
+    
     for nz in range(1, len(V.Ex)):
          
-        V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]#-(1/(epsInf))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
+        V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1]-V.Jx[nz])*V.UpExMat[nz]*C_V.den_Exdz[nz]#-(1/(epsInf))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
         
-    #if P.LorentzMed == True:
-     #   for nz in range(P.materialRearEdge, len(V.Ex)):
-             
-      #       V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]-(1/(2*P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
-   #elif P.LorentzMed == False:
-    #    for nz in range(1, len(V.Ex)):
-     #        
-      #           V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]#-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
-             
-        ####### 
-       # V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*1-(1/(P.delT))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz]) #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
-       #.Ex[nz] =V.UpExSelf[nz]*V.Ex[nz] + (V.Hy[nz]-V.Hy[nz-1])*V.UpExMat[nz]*C_V.den_Exdz[nz]# +V.Jx[nz]
+
     """
     if np.sum(np.isnan(V.Ex))>0:
         breakpoint()
@@ -665,20 +692,83 @@ def ADE_ExUpdate(V, P, C_V, C_P, counts):
     return V.Ex
 
 
+
+
+def NonlinAnalytic(V, P, C_V, C_P):#
+    #manley rowe 
+    #phase match condition to determine dominant harmonic?
+    
+    pass
+
+"""
+
+Tomorrows work: Fill in nonlinear deets and measure harmonics just to see if they exist 
+and are differentiable from noise
+
+
+measure harmonics, relative amplitudes of harmonics variation along z of amplitude 
+to find dAi/dz  Two adjacent grids? Integrate?
+Create new var V.nonLin2PolCurr
+
+
+Expand code to have nonlinearity and lorentz in magnetic field. Bring over info from 
+COMSOL/Matlab stuff, run through code and might be usable in report.
+
+Solitons? 
  
-#@nj
+ 
+Some kind of validation to show periodic metamaterial acts like continuous material?
+papers? Effective params. 
+
+Expand fields to 2D, incorporate stl module, build set up in comsol and export stl
+
+Incorporate basic evolving charge distribution
+
+Some verifications for 2D set up? Particle dist? ensemble system?
+
+Consider data science analysis of numerical data? GPU ENHANCEMENTS? 
+
+Be careful about time steps and spatial steps of updates ? Go over and check as writing
+up equations in thesis 
+"""
+
+@nj
 def ADE_ExCreate(V, P, C_V, C_P):
-    #Dxn = (V.Dx-V.tempTempVarDx)/2#
+    
+    #Dxn = (V.Dx-V.tempTempVarDx)/2# ??
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
-       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz])/(P.permit_0)
+        
+       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz] )/(P.permit_0)
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
     #if(np.max(np.abs(V.Ex[P.materialFrontEdge: P.materialRearEdge])))>2:
      #   breakpoint()
+     
     return V.Ex
 
-#@nj
+
+def ADE_ExNonlin3Create(V, P, C_V, C_P, counts):
+    
+    #Dxn = (V.Dx-V.tempTempVarDx)/2# ??
+    pi = np.pi
+    alpha = 0.1
+    epsNum = (V.plasmaFreqE*V.plasmaFreqE)
+    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
+    epsilon = 1+ epsNum/epsDom
+    
+    for nz in range(P.materialFrontEdge, P.materialRearEdge):
+        
+       V.Ex[nz] =(V.Dx[nz])/(P.permit_0*(np.real(epsilon) + alpha*V.chi3Stat*np.abs(V.Ex[nz]*V.Ex[nz])))
+     #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
+      #       print("Ex IS wrong create", V.Ex[nz])
+             #sys.exit()
+    #if(np.max(np.abs(V.Ex[P.materialFrontEdge: P.materialRearEdge])))>2:
+     #   breakpoint()
+     
+    return V.Ex
+
+@nj
 def ADE_DxUpdate(V, P, C_V, C_P):
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
         V.Dx[nz] =V.Dx[nz] + (V.Hy[nz]-V.Hy[nz-1])*(P.delT/(P.dz))*C_V.den_Exdz[nz]
@@ -714,12 +804,16 @@ def MUR1DEx(V,P, C_V, C_P):
     return V.Ex
 
 
+
 def AnalyticalReflectionE(V, P):
     pi = np.pi
+    
+    #CHOSEN GAMMA HAS 1 IN FRONT NOT 2!!
     epsNum = (V.plasmaFreqE*V.plasmaFreqE)
-    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) - 1j*V.gammaE*2*pi*P.freq_in)
+    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
+    #V.epsilon = epsilon
     # INTERESTING BUG WITH ARCSIN INVALID VALUE, UNIT TEST 
     mu =1
     refr = 1 # factored out 377 ohms
@@ -733,13 +827,19 @@ def AnalyticalReflectionE(V, P):
     n2 =  realV/P.c0
     n1 = 1
     reflectionNormInc = 1-abs((n1-n2)/(n1+n2))**2
-    print(reflectionNormInc, "NEW ANALYTICAL REFLECTION USING FRESNEL NORMAL INCIDENCE.")
+    print(reflection, "NEW ANALYTICAL REFLECTION USING FRESNEL NORMAL INCIDENCE.")
     dispPhaseVelNum = (((2*np.pi*P.freq_in)*P.dz)/2)
     dispPhaseVelDenArg= ((P.dz)/(realV*P.delT))*np.sin((2*np.pi*P.freq_in*P.delT)/2)
     dispPhaseVel = dispPhaseVelNum/np.arcsin(dispPhaseVelDenArg)
    # print(trans1)
    # print(reflection1, " analytical reflection")
     print(epsilon ,"eps for pf: ", V.plasmaFreqE)
+    print("Refractive index: ", refr2)
+    alphaAtten =( 2*(np.imag(refr2))*P.freq_in*2*np.pi)/P.c0
+    print(alphaAtten) #file:///C:/Users/Fraser/Downloads/MIT6_007S11_lorentz.pdf
+    stability = np.real(refr2/(np.sqrt(1/P.dz*P.dz)))
+    #plot stability and delT on same plot, to make sure stability does not exceed delT
+    
     #print(epsNum)
     #print(epsDom)
     #print(trans1+reflection1)

@@ -31,13 +31,14 @@ import sys
 from numba import njit as nj
 
 
-def RefTester(V,P, y, m):
+def RefTester(V,P, y, m, mul = False):
     #breakpoint()
     fs = 1/P.delT
     
     Y = fftpack.fft(y)
     Ypow = (2*np.abs(Y))/P.timeSteps
-   
+    
+   # breakpoint()
     freqs = fftpack.fftfreq(len(y), d = P.delT)
    # breakpoint()
     fig, ax = plt.subplots()
@@ -48,9 +49,10 @@ def RefTester(V,P, y, m):
         bob = np.isclose(freqs, P.freq_in, rtol = 1e-3)
         bobInd = np.where(bob == True)
         valRange = Ypow[bobInd[0][0]-50: bobInd[0][0]+50]
-        val = np.argmax(valRange)
+        val = np.max(valRange)
     
-    
+    if mul == True:
+        return val
         
     ax.stem(freqs, m*2*np.abs(Y)/len(Y), use_line_collection = True)
     ax.set_xlabel('Frequency in Hertz [Hz]')

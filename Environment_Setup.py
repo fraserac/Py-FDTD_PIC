@@ -16,8 +16,16 @@ import math as ma
 
 
 
-def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and freq 
-   # P.epsRe =1
+def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[], P=[]):# domain size and freq 
+    pi = np.pi
+    
+    #CHOSEN GAMMA HAS 1 IN FRONT NOT 2!!
+    if (VExists):
+        epsNum = (V.plasmaFreqE*V.plasmaFreqE)
+        epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
+        eps0 = P.permit_0   
+        epsilon = 1 + epsNum/epsDom
+     
     #P.epsIm = 0
     #P.muRe = 1
     #P.muIm = 0
@@ -27,10 +35,13 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
     lamMin = (c0/freq_in)
     
     #print("LamMin ", P.lamMin)
-    Nlam=80
+    if VExists: 
+        Nlam =50
+    elif VExists ==False:
+        Nlam = 50
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)*0.75#/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)*0.8#/(P.c0*np.sqrt(1/(P.dz**2)))
     print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
@@ -114,7 +125,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600):# domain size and fre
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 20*int(lamMin/dz)
+    MaterialDistFromPml = 15*int(lamMin/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1
