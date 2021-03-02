@@ -134,7 +134,10 @@ specV = [('Nz', int32),
     ('nonLin3gammaE', float64),
     ('nonLin3Omega_0E', float64),
     ('chi1Stat', float64),
-    ('chi3Stat', float64)]
+    ('chi3Stat', float64),
+    ('JxKerr', float64[:]),
+    ('JxRaman', float64[:])]
+
          
 @jclass(specV)
 class Variables(object):
@@ -168,9 +171,9 @@ class Variables(object):
         self.epsilon = np.ones(Nz)
         self.mu = np.ones(Nz)
         self.polarisationCurr = np.zeros(Nz)
-        self.plasmaFreqE =(0.617*2*np.pi*3e9)
-        self.gammaE = 0#2*2*np.pi*20e9*0.1
-        self.omega_0E= 2.7537e9
+        self.plasmaFreqE =np.sqrt(((1.5)*(2*np.pi*20e9)**2))
+        self.gammaE = 2*np.pi*20e9*0.1
+        self.omega_0E= 2*np.pi*20e9
         self.tempVarPol =np.zeros(Nz)
         self.tempTempVarPol =np.zeros(Nz)
         self.tempVarE =np.zeros(Nz)
@@ -190,10 +193,12 @@ class Variables(object):
         self.alpha3 = 0.7
         self.Qx3 = np.zeros(Nz)
         self.Pbar3 = np.zeros(Nz)
-        self.nonLin3gammaE = 3.1250e13
-        self.nonLin3Omega_0E = 8.7722e13
+        self.nonLin3gammaE = 0
+        self.nonLin3Omega_0E = 4e14
         self.chi1Stat = 0.69617
-        self.chi3Stat = 1.94e-1
+        self.chi3Stat = 7e-2
+        self.JxKerr = np.zeros(Nz)
+        self.JxRaman = np.zeros(Nz)
         
         
 
@@ -532,6 +537,22 @@ def SourceManager(V, P, C_V, C_P):
      
     return [],[]
 
+def SechArr(a):
+    #protect overflow: 
+    #breakpoint()
+    a= np.where(a>50, 50, a)
+    out = 1/np.cosh(a)
+    return out
+
+def Sig_Mod(V, P, sig, AmpCarr =1, AmpMod =1, tau = 14.6e-10):
+        
+        # initially just sech envelope
+        trang= np.arange(len(sig))*(P.delT)
+        omega_mod = 2*np.pi*(1/tau)
+        pulseEnv =(AmpMod + sig)*SechArr(omega_mod*trang) 
+        sigOut = pulseEnv
+        return sigOut
+
 def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
     for i in range(0,2):
         V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
@@ -548,11 +569,10 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
         # PROBABLY BETTER TO RUN THIS IN LINEAR DISP INTEGRATOR
         #lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
         Exs, Hys = SourceManager(V, P, C_V, C_P)
-        trang= np.arange(len(Exs))*(P.delT)
-        omega_mod = 2*np.pi*(1/14.6e-15)
-        sech = lambda a : 1/np.cosh(a)
-        pulseEnv =(1+Exs)*sech(omega_mod*trang) 
-        Exs = pulseEnv
+        tauIn=1/(P.freq_in/5)
+        Exs = Sig_Mod(V, P, Exs, tau= tauIn)
+        Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp, tau = tauIn)
+        
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
         for counts in range(0,P.timeSteps):
                     
@@ -622,7 +642,8 @@ def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
         
         lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
         Exs, Hys = SourceManager(V, P, C_V, C_P)
-        
+        Exs = Sig_Mod(V,P, Exs)
+        Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp)
         
         for counts in range(0,P.timeSteps):
           
@@ -642,10 +663,13 @@ def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
            if P.TFSF == True:
                 V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
                 
-           V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)
            
-           if i ==1:
-               V.Ex =BaseFDTD11.ADE_ExNonlin3Create(V, P, C_V, C_P,counts) 
+           
+           V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)  # Linear bit
+           V.Ex =BaseFDTD11.ADE_ExCreate(V, P, C_V, C_P) 
+           ####Nonlinear bit
+           #V.JxKerr = BaseFDTD11.KerrNonlin(V,P)
+           #V.Ex = BaseFDTD11.ADE_ExNonlin3Create(V, P, C_V, C_P, counts)
            V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
            if P.CPMLXp == True or P.CPMLXm == True:
                    C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
@@ -689,6 +713,9 @@ def integratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf):
         
         lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
         Exs, Hys = SourceManager(V, P, C_V, C_P)
+        tauIn = 1/(P.freq_in/5)
+        Exs = Sig_Mod(V,P, Exs,tau =tauIn)
+        Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp, tau = tauIn)
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
         V.test = 0
         
@@ -953,10 +980,10 @@ def __Main__():
     print("Code started at: ", startedTime)
     loopMode = False
     MORmode = False
-    domainSize=1500
-    lowLimTim = 3000
-    highLimTim = 4000 # More rigorous via speed of wave and dist 
-    freq_in = 1.37e14
+    domainSize=2000
+    lowLimTim = 5000
+    highLimTim = 6000 # More rigorous via speed of wave and dist 
+    freq_in = 10e9
     delayMOR =20
     noOfEnvOuts = 20
     setupReturn = []*noOfEnvOuts
@@ -971,24 +998,24 @@ def __Main__():
     Rep = Reporter() 
     P.atten = True 
     P.epsRe =1# 0.917**2
-    P.CPMLXp =True   ### CHANGE TO Z FOR PROP DIRECTION
-    P.CPMLXm =True 
+    P.CPMLXp =True    ### CHANGE TO Z FOR PROP DIRECTION
+    P.CPMLXm =True
     P.TFSF = True
     P.Gaussian =False
     P.SineCont = True   # Set up smoothturn on for multiple repeats
     P.Periods = 10
-    P.LorentzMed=False # MAKE SURE EPSRE IS 1
+    P.LorentzMed=True # MAKE SURE EPSRE IS 1
     P.nonLinMed = False
     ticK = tim.perf_counter()
     
     
-    
+    if P.nonLinMed == True:
+        P.FreeSpace = False
+        P.LorentzMed = False   # Redundant code because first batch handles all 
     if P.LorentzMed == True:
         P.FreeSpace = False
         P.nonLinMed = False
-    if P.nonLinMed == True:
-        P.FreeSpace = False
-        P.LorentzMed = False
+    
     
   
     V, P, C_V, C_P, Exs, Hys = LoopedSim(Rep,V,P,C_V, C_P, P.MORmode, domainSize, lowLimTim, highLimTim, loop = loopMode, Low =P.freq_in, Interval = 2e9)

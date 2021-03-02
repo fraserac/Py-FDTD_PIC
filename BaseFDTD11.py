@@ -738,7 +738,7 @@ def ADE_ExCreate(V, P, C_V, C_P):
     #Dxn = (V.Dx-V.tempTempVarDx)/2# ??
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
         
-       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz] )/(P.permit_0)
+       V.Ex[nz] =(V.Dx[nz] - V.polarisationCurr[nz] )/(P.permit_0) 
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
@@ -751,15 +751,11 @@ def ADE_ExCreate(V, P, C_V, C_P):
 def ADE_ExNonlin3Create(V, P, C_V, C_P, counts):
     
     #Dxn = (V.Dx-V.tempTempVarDx)/2# ??
-    pi = np.pi
-    alpha = 0.1
-    epsNum = (V.plasmaFreqE*V.plasmaFreqE)
-    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
-    epsilon = 1+ epsNum/epsDom
+
     
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
         
-       V.Ex[nz] =(V.Dx[nz])/(P.permit_0*(np.real(epsilon) + alpha*V.chi3Stat*np.abs(V.Ex[nz]*V.Ex[nz])))
+       V.Ex[nz] -=V.JxKerr[nz]
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
@@ -780,7 +776,11 @@ def ADE_DxUpdate(V, P, C_V, C_P):
      #breakpoint()
     return V.Dx
 
-
+def KerrNonlin(V,P, counts):
+    if np.max(V.JxKerr >100):
+        breakpoint()
+    V.JxKerr = ((V.alpha3*P.permit_0*V.chi3Stat)/P.delT)*(np.abs(V.Ex)**2*V.Ex - np.abs(V.tempTempVarE)**2*V.tempTempVarE)
+    return V.JxKerr
 
 def MUR1DEx(V,P, C_V, C_P):
     # convert into for loop for forward and backwards waves

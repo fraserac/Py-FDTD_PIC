@@ -36,12 +36,12 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     
     #print("LamMin ", P.lamMin)
     if VExists: 
-        Nlam =50
+        Nlam =100
     elif VExists ==False:
-        Nlam = 50
+        Nlam = 100
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)*0.8#/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)*0.99#/(P.c0*np.sqrt(1/(P.dz**2)))
     print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
@@ -125,7 +125,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 15*int(lamMin/dz)
+    MaterialDistFromPml = 10*int(lamMin/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1
