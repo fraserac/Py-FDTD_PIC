@@ -36,12 +36,13 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     
     #print("LamMin ", P.lamMin)
     if VExists: 
-        Nlam =100
+        Nlam =int(100*np.max(np.real(epsilon)))
+        print("in VExists env setup, max eps = ", np.max(np.real(epsilon)))
     elif VExists ==False:
-        Nlam = 100
+        Nlam = 150
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)*0.99#/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)*0.95#/(P.c0*np.sqrt(1/(P.dz**2)))
     print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces

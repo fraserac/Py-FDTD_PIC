@@ -38,10 +38,11 @@ def RefTester(V,P, y, m, mul = False):
     Y = fftpack.fft(y)
     Ypow = (2*np.abs(Y))/P.timeSteps
     
-   # breakpoint()
+   # 
     freqs = fftpack.fftfreq(len(y), d = P.delT)
    # breakpoint()
     fig, ax = plt.subplots()
+    """
     finder = np.where(freqs==P.freq_in) # outputs tuple
     if  len(finder[0]) != 0:
         val = Ypow[finder[0][0]]
@@ -53,7 +54,16 @@ def RefTester(V,P, y, m, mul = False):
     
     if mul == True:
         return val
-        
+    """    
+    indMax = np.argmax(Ypow)
+    if indMax != 0:
+        freqMax = freqs[indMax]
+        print("Freq with largest amplitude: ", freqMax)
+        val = Ypow[indMax]
+    else:
+        print("Could not find non-DC freq")
+        sys.exit()
+    ax.title.set_text("Power spectrum, reflection")
     ax.stem(freqs, m*2*np.abs(Y)/len(Y), use_line_collection = True)
     ax.set_xlabel('Frequency in Hertz [Hz]')
     ax.set_ylabel('Frequency Domain (Spectrum) Magnitude')
@@ -61,7 +71,7 @@ def RefTester(V,P, y, m, mul = False):
     ax.set_ylim(-2, 2)
     
     
-    bob = (np.abs(Y[int(len(Y)/2)+10:len(Y)-500])*m*2)/len(Y)
+    bob = (np.abs(Y[int(len(Y)/2)+10:len(Y)-500])*m*2)/len(Y)  # The hell is this?
     fig1, ax1 = plt.subplots()
     ax1.plot(bob)
     

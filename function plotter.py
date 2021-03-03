@@ -12,7 +12,7 @@ plt.close('all')
 gammaE = 2*np.pi*20e9*0.1
 omega_0E= 2*np.pi*20e9
 
-freq_in = np.arange(1e8, 5e13, 1e10)
+freq_in = np.arange(1e7, 5e10, 1e8)
 
 eps8= 1.5
 epsS =3

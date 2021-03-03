@@ -714,8 +714,8 @@ def integratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf):
         lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
         Exs, Hys = SourceManager(V, P, C_V, C_P)
         tauIn = 1/(P.freq_in/5)
-        Exs = Sig_Mod(V,P, Exs,tau =tauIn)
-        Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp, tau = tauIn)
+        #Exs = Sig_Mod(V,P, Exs,tau =tauIn)
+       # Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp, tau = tauIn)
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
         V.test = 0
         
@@ -800,8 +800,8 @@ def integratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf):
 
 
 def Controller(V, P, C_V, C_P):
-    probeReadFinishBe = 3000
-    probeReadStartAf = 600  # More rigorous on/off criteria
+    probeReadFinishBe = int(P.timeSteps*0.7)
+    probeReadStartAf = int(P.timeSteps*0.05)  # More rigorous on/off criteria
     V.x1ColBe = np.zeros(P.timeSteps)
     V.x1ColAf = np.zeros(P.timeSteps)
 
@@ -862,7 +862,7 @@ def results(V, P, C_V, C_P, time_Vec,  RefCo = False, FFT = False, AnalRefCo = F
     return "results ran to end"
     
 
-def plotter(xAxisData,  yAxisData1, yAxisData2, xAxisLim = 2, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = " ", legend = " ", title= " "):
+def plotter(xAxisData,  yAxisData1, yAxisData2, xAxisLim = 2, myAxisLim = 0, yAxisLim = 1, xAxisLabel = " ", yAxisLabel = " ", legend = " ", title= " "):
    
     # Add block data option for more than 2 data sets
     fig, ax = plt.subplots()
@@ -871,7 +871,9 @@ def plotter(xAxisData,  yAxisData1, yAxisData2, xAxisLim = 2, yAxisLim = 1, xAxi
     ax.plot(xAxisData, yAxisData2)
     ax.set_title(title) 
     ax.legend(legend)
-    #ax.set_ylim(-yAxisLim, yAxisLim)
+    ax.set_ylim(myAxisLim, yAxisLim)
+    ax.xlabel = xAxisLabel
+    ax.ylabel = yAxisLabel
     #ax.set_xlim(-xAxisLim, xAxisLim)
     #titles and neatly formatting 
     #breakpoint()
@@ -882,11 +884,11 @@ InputSweepSwitch = {"Input frequency sweep": results,
   
 
 #@jit
-def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, stringparamSweep = "Input frequency sweep", loop =False,  Low = 1e9, Interval = 1e8, RefCoBool = True):
+def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, stringparamSweep = "Input frequency sweep", loop =False,  Low = 3e9, Interval = 1e8, RefCoBool = True):
     #print("loop = ", loop)
    
     if loop == True:
-        points = 5
+        points = 10
         dataRange = np.arange(Low, points*Interval+Low, Interval) 
         #print(len(dataRange))
         freqDomYAxisRef =np.zeros(points)
@@ -901,7 +903,7 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, str
                 setupReturn = []*noOfEnvOuts
                 setupReturn =envDef.envSetup(P.freq_in, domainSize,lowLimTim,highLimTim, VExists = True, V = V, P= P)   # this function returns a list with all evaluated model parameters
                 P= Params(*setupReturn, P.MORmode, domainSize, P.freq_in, 20, LorentzMed = P.LorentzMed, SineCont = P.SineCont, Gaussian = P.Gaussian, TFSF = P.TFSF) #be careful with tuple, check ordering of parameters 
-                V=Variables(P.Nz, P.timeSteps)
+                V=Variables(P.Nz, P.timeSteps, P.vidInterval, 1)  # Make last two args defaults in class constr
                 C_P = CPML_Params(P.dz)
                 C_V = CPML_Variables(P.Nz, P.timeSteps)
                 V, P, C_V, C_P, Exs, Hys= Controller(V, P, C_V, C_P)
@@ -919,7 +921,7 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, str
                 
                 #print(freqDomYAxis2AnalRef)
                 #print(freqDomYAxisRef, freqDomYAxis2AnalRef, "Y STUFF")
-        plotter(dataRange, yAxisData1 =freqDomYAxisRef, yAxisData2 =freqDomYAxis2AnalRef, legend = ["Measured","Analytical"], title = "Analytical vs Measured reflection")  
+        plotter(dataRange, yAxisLim = 1, yAxisData1 =freqDomYAxisRef, yAxisData2 =freqDomYAxis2AnalRef, legend = ["Measured","Analytical"], title = "Analytical vs Measured reflection")  
         
     elif loop == False:
             points =1
@@ -937,11 +939,11 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, str
             print("Max vals: Ex, Jx, Hy: ", np.max(V.x1ColBe),np.max(V.x1Jx),np.max(V.x1Hy))
             #breakpoint()
             t =np.arange(0,len(V.x1ColBe))*P.delT
-           # freqDomYAxisRef[0] = results(V, P, C_V, C_P, t,  RefCo=True) # One refco y point
-            #freqDomYAxis2AnalRef[0] =results(V, P, C_V, C_P, t, AnalRefCo = True)
-           # freqDomAttenAmp[0] =results(V, P, C_V, C_P, t, attenRead = True)   # if working duplicate in loop = True
-           # t =np.arange(0,len(V.x1ColBe))*P.delT
-          #  print(freqDomYAxisRef[0], freqDomYAxis2AnalRef[0], " measured vs analytical ref")#
+            freqDomYAxisRef[0] = results(V, P, C_V, C_P, t,  RefCo=True) # One refco y point
+            freqDomYAxis2AnalRef[0] =results(V, P, C_V, C_P, t, AnalRefCo = True)
+            #freqDomAttenAmp[0] =results(V, P, C_V, C_P, t, attenRead = True)   # if working duplicate in loop = True
+            
+            print(freqDomYAxisRef[0], freqDomYAxis2AnalRef[0], " measured vs analytical ref")#
             #plot atten read
            #spatial = np.arange(P.Nz+1)*P.dz
             
@@ -978,12 +980,12 @@ def __Main__():
     startedAt = date.today()
     startedTime = datetime.now()  # move to report 
     print("Code started at: ", startedTime)
-    loopMode = False
+    loopMode = True
     MORmode = False
-    domainSize=2000
-    lowLimTim = 5000
-    highLimTim = 6000 # More rigorous via speed of wave and dist 
-    freq_in = 10e9
+    domainSize=3400   # change this based on cpml and material positions, in envSetup?
+    lowLimTim = 6000
+    highLimTim = 7000 # More rigorous via speed of wave and dist 
+    freq_in = 6e9
     delayMOR =20
     noOfEnvOuts = 20
     setupReturn = []*noOfEnvOuts
@@ -1018,7 +1020,7 @@ def __Main__():
     
     
   
-    V, P, C_V, C_P, Exs, Hys = LoopedSim(Rep,V,P,C_V, C_P, P.MORmode, domainSize, lowLimTim, highLimTim, loop = loopMode, Low =P.freq_in, Interval = 2e9)
+    V, P, C_V, C_P, Exs, Hys = LoopedSim(Rep,V,P,C_V, C_P, P.MORmode, domainSize, lowLimTim, highLimTim, loop = loopMode, Low =P.freq_in, Interval = 5e8)
     tocK = tim.perf_counter()
     Rep.printer(str(tocK-ticK), "LoopMainTime")
     templateEnv = env(loader = fsl('.'))
