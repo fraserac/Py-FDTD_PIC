@@ -619,7 +619,7 @@ def ADE_Nonlin_Q_and_G(V, P):
         V.Qx3[nz] = V.Qx3[nz] + P.delT*V.Gx3[nz]
     
     return V.Gx3, V.Qx3, V.Ex
-
+#@nj
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts):   #FIND ADE PAPER!
     """
     s0=(1/delt^2)+(gamae/(2*delt))

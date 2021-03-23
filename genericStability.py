@@ -114,7 +114,7 @@ def vonNeumannAnalysis(V,P,C_V,C_P):
                 if np.max(stabilityVals[nz]) > 1:
                     if simpleRoot == False:     
                         print("Stability eigenvalues greater than one, von Neumann instability.", stabilityVals[nz])
-                        breakpoint()
+                        #breakpoint()
                        # engine = pytalk.init()
                         #engine.say("Stability eigenvalues greater than one, von Neumann instability.")
                         #engine.runAndWait()

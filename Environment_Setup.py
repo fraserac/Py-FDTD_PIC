@@ -20,7 +20,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     pi = np.pi
     
     #CHOSEN GAMMA HAS 1 IN FRONT NOT 2!!
-    if (VExists):
+    if (VExists): 
         epsNum = (V.plasmaFreqE*V.plasmaFreqE)
         epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
         eps0 = P.permit_0   
@@ -36,13 +36,13 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     
     #print("LamMin ", P.lamMin)
     if VExists: 
-        Nlam =int(100*np.max(np.real(epsilon)))
+        Nlam =int(60*(np.real(epsilon))**1.05)
         print("in VExists env setup, max eps = ", np.max(np.real(epsilon)))
     elif VExists ==False:
-        Nlam = 150
+        Nlam = 50
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
-    delT = (dz/c0)*0.95#/(P.c0*np.sqrt(1/(P.dz**2)))
+    delT = (dz/c0)*0.95#/(P.c0*np.sqrt(1/(P.dz**2)))  # COUPLED TO DZ THROUGH COURANT CONSTRAINT! 
     print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
@@ -63,13 +63,16 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     dimen =1
     nonInt =  False
     No = 0
-    Nz = (domainSize) +2*dimen*pmlWidth   #Grid size
+    
+    Nz = int((domainSize)/dz) +2*dimen*pmlWidth  #CONST DISTANCE. 
+    
+        #Nz = (domainSize) +2*dimen*pmlWidth   #Grid size
     print(Nz, 'Nz')
     if minim== maxim:
         No = minim
         
         
-        
+       
     if minim ==  maxim:
         minim-=1#
     for N in range(minim,maxim):
@@ -85,6 +88,8 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
            #sys.exit()
            nonInt = True
            
+      # Bodge fix of timesteps increase to match delT shrinkage with dz
+           
           # print("hereeee")
        
     if(nonInt == True):       
@@ -97,13 +102,14 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
                 checkNear = dummyCheck
                 
                 #print("dummy")
-               
+            
         
     if N >=minim:
         timeSteps = N 
     else:
         timeSteps = minim
-            
+        
+    timeSteps+=int(timeSteps*(Nlam/200))  
     
     
     print('timesteps: ', timeSteps)
@@ -113,8 +119,8 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
         sys.exit()
     t=np.arange(0, timeSteps, 1)*(delT)  # FOR VERIFICATION PLOTTING, EVALUATE IN CLASS
     
-    nzsrcFromPml =200
-    if nzsrcFromPml >= domainSize*0.65:
+    nzsrcFromPml =int(0.05/dz)
+    if nzsrcFromPml >= Nz*0.65:
         print(nzsrcFromPml, 'src is too far into domain')
         sys.exit()
         
@@ -126,7 +132,7 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = 10*int(lamMin/dz)
+    MaterialDistFromPml = int(0.1/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
     materialRearEdge =  Nz-1
@@ -135,13 +141,13 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     if MaterialWidth < 10:
         print(MaterialWidth, "width is too small or negative")
         sys.exit()
-    if MaterialDistFromPml >= domainSize:
+    if MaterialDistFromPml >= domainSize/dz:
         print("Material starts in CPML region")
         sys.exit()
     if materialFrontEdge <= nzsrc:
         print("Source is inside material")
         sys.exit()
-    x1Loc = nzsrc + 500
+    x1Loc = materialFrontEdge -20
     x2Loc = nzsrc-100
     
     eLoss =0   # sigma e* delT/2*epsilon
