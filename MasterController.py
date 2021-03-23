@@ -195,9 +195,9 @@ class Variables(object):
         self.Qx3 = np.zeros(Nz)
         self.Pbar3 = np.zeros(Nz)
         self.nonLin3gammaE = 0
-        self.nonLin3Omega_0E = 4e14
+        self.nonLin3Omega_0E = 6e9
         self.chi1Stat = 0.69617
-        self.chi3Stat = 7e-2
+        self.chi3Stat = 7e-1
         self.JxKerr = np.zeros(Nz)
         self.JxRaman = np.zeros(Nz)
         
@@ -588,11 +588,10 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, str
             t =np.arange(0,len(V.x1ColBe))*P.delT
             if P.FreeSpace:
                 print("Free space so no probe reviewed")
-            else:
+            elif P.LorentzMed:
                 freqDomYAxisRef[0] = results(V, P, C_V, C_P, t,  RefCo=True) # One refco y point
                 freqDomYAxis2AnalRef[0] =results(V, P, C_V, C_P, t, AnalRefCo = True)
             #freqDomAttenAmp[0] =results(V, P, C_V, C_P, t, attenRead = True)   # if working duplicate in loop = True
-            
                 print(freqDomYAxisRef[0], freqDomYAxis2AnalRef[0], " measured vs analytical ref")#
             #plot atten read
            #spatial = np.arange(P.Nz+1)*P.dz
@@ -637,9 +636,11 @@ def __Main__():
     highLimTim = 5000 # More rigorous via speed of wave and dist 
     freq_in = 6e9
     delayMOR =20
+    LorMed = False
+    nonLinMed = True
     noOfEnvOuts = 20
     setupReturn = []*noOfEnvOuts
-    setupReturn =envDef.envSetup(freq_in, domainSize,lowLimTim,highLimTim)   # this function returns a list with all evaluated model parameters
+    setupReturn =envDef.envSetup(freq_in, domainSize,lowLimTim,highLimTim, nonLinMed =nonLinMed, LorMed = LorMed)   # this function returns a list with all evaluated model parameters
     P= Params(*setupReturn, MORmode, domainSize, freq_in, delayMOR) #be careful with tuple, check ordering of parameters 
     P.vidInterval = 50
     attenAmount = 10
@@ -656,8 +657,8 @@ def __Main__():
     P.Gaussian =False
     P.SineCont = True   # Set up smoothturn on for multiple repeats
     P.Periods = 5
-    P.LorentzMed=False # MAKE SURE EPSRE IS 1
-    P.nonLinMed = False
+    P.LorentzMed=LorMed # MAKE SURE EPSRE IS 1
+    P.nonLinMed = nonLinMed
     ticK = tim.perf_counter()
     
     

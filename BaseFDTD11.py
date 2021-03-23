@@ -619,7 +619,7 @@ def ADE_Nonlin_Q_and_G(V, P):
         V.Qx3[nz] = V.Qx3[nz] + P.delT*V.Gx3[nz]
     
     return V.Gx3, V.Qx3, V.Ex
-#@nj
+@nj
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts):   #FIND ADE PAPER!
     """
     s0=(1/delt^2)+(gamae/(2*delt))
@@ -672,8 +672,8 @@ def ADE_MyUpdate():
     
     pass
 
-forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
-@jit(nopython = True,locals=  forlocalsAEX )
+#forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
+@nj
 def ADE_ExUpdate(V, P, C_V, C_P, counts): 
    
    
@@ -747,15 +747,21 @@ def ADE_ExCreate(V, P, C_V, C_P):
      
     return V.Ex
 
-
+@nj
 def ADE_ExNonlin3Create(V, P, C_V, C_P, counts):
     
     #Dxn = (V.Dx-V.tempTempVarDx)/2# ??
-
+    ######NOTE
     
+    ###### NOTE
+    
+    
+    ######NOTE
+    #print("epsilon 0 multiplies epsilon! Include later")
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
-        
-       V.Ex[nz] -=V.JxKerr[nz]
+       
+       
+       V.Ex[nz] = V.Dx[nz] /(P.permit_0*1+P.permit_0*V.alpha3*V.chi3Stat*np.abs(V.Ex[nz])*np.abs(V.Ex[nz]))
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
