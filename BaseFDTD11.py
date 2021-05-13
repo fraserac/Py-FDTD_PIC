@@ -14,7 +14,7 @@ import numpy as np
 import matplotlib.pylab as plt
 from scipy import signal as sign
 import sys 
-
+import numba
 from numba import njit as nj
 from numba import jit
 
@@ -359,10 +359,10 @@ def denominators(V, P, C_V, C_P):
 
 forLocals = {'zeta0': float64[:], 'zeta1':float64[:]}
 
-@jit(nopython = True, locals=forLocals, debug =True)
+#@jit(nopython = True, locals=forLocals, debug =True)
 def CPML_Psi_e_Update(V,P, C_V, C_P): 
-   zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
-   zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
+   #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
+   #zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
    if P.CPMLXm ==True:
        for nz in range(1, P.pmlWidth): 
             C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] +C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
@@ -379,14 +379,14 @@ def CPML_Psi_e_Update(V,P, C_V, C_P):
    if np.sum(np.abs(C_V.psi_Ex)) > 100:
        breakpoint()
    """
-   return C_V.psi_Ex, V.Ex 
+   return C_V.psi_Ex, V.Ex
 
 
 ########################### DELIBERATELY BROKEN, FIX THIS TOMORROW!
-@jit(nopython = True, locals=forLocals, debug =True)
+#@jit(nopython = True, locals=forLocals, debug =True)
 def CPML_Psi_m_Update(V,P, C_V, C_P): 
-    zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
-    zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
+    #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
+    #zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
     if P.CPMLXm ==True:
        for nz in range(1, P.pmlWidth): 
         C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz]+ C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
@@ -403,7 +403,7 @@ def CPML_Psi_m_Update(V,P, C_V, C_P):
     if np.sum(np.abs(C_V.psi_Ex)) > 100:
         breakpoint()
     """
-    return C_V.psi_Hy, V.Hy 
+    return C_V.psi_Hy, V.Hy
 
 
 @nj
@@ -619,7 +619,7 @@ def ADE_Nonlin_Q_and_G(V, P):
         V.Qx3[nz] = V.Qx3[nz] + P.delT*V.Gx3[nz]
     
     return V.Gx3, V.Qx3, V.Ex
-#@nj
+@nj
 def ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts):   #FIND ADE PAPER!
     """
     s0=(1/delt^2)+(gamae/(2*delt))
@@ -672,8 +672,8 @@ def ADE_MyUpdate():
     
     pass
 
-forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
-@jit(nopython = True,locals=  forlocalsAEX )
+#forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
+@nj
 def ADE_ExUpdate(V, P, C_V, C_P, counts): 
    
    
@@ -747,15 +747,21 @@ def ADE_ExCreate(V, P, C_V, C_P):
      
     return V.Ex
 
-
+@nj
 def ADE_ExNonlin3Create(V, P, C_V, C_P, counts):
     
     #Dxn = (V.Dx-V.tempTempVarDx)/2# ??
-
+    ######NOTE
     
+    ###### NOTE
+    
+    
+    ######NOTE
+    #print("epsilon 0 multiplies epsilon! Include later")
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
-        
-       V.Ex[nz] -=V.JxKerr[nz]
+       
+       
+       V.Ex[nz] = V.Dx[nz] /(P.permit_0*1+P.permit_0*V.alpha3*V.chi3Stat*np.abs(V.Ex[nz])*np.abs(V.Ex[nz]))
      #  if(np.isnan(V.Ex[nz]) or V.Ex[nz] > 10):
       #       print("Ex IS wrong create", V.Ex[nz])
              #sys.exit()
@@ -776,9 +782,10 @@ def ADE_DxUpdate(V, P, C_V, C_P):
      #breakpoint()
     return V.Dx
 
+@nj
 def KerrNonlin(V,P, counts):
-    if np.max(V.JxKerr >100):
-        breakpoint()
+   # if np.max(V.JxKerr >100):
+    #    breakpoint()
     V.JxKerr = ((V.alpha3*P.permit_0*V.chi3Stat)/P.delT)*(np.abs(V.Ex)**2*V.Ex - np.abs(V.tempTempVarE)**2*V.tempTempVarE)
     return V.JxKerr
 
@@ -802,6 +809,55 @@ def MUR1DEx(V,P, C_V, C_P):
      #   print("Ex is nonzero: ", V.Ex[nz])
     
     return V.Ex
+
+#if below works clean out redundant code
+
+#Andrey Sukhorukov, Comparative study of FDTD adopted...
+def Nonlin_Eqn_Setup(cub, qua, one, nz):
+    cubicPoly =  np.array([cub, qua, one, -np.abs(V.Dx[nz]/P.permit_0)**2])
+    return cubicPoly
+
+def AcubicFinder(V,P):
+    epsNum = (V.plasmaFreqE*V.plasmaFreqE)
+    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
+    eps0 = P.permit_0   
+    epsilon = 1 + epsNum/epsDom
+    cub = (V.alpha*V.chi3Stat)**2
+    qua = 2*np.real(V.alpha*epsilon*V.chi3Stat)
+    one = np.abs(epsilon)**2
+    for nz in range(P.materialFrontEdge, P.materialRearEdge):
+        cubPoly = Nonlin_Eqn_Setup(cub, qua, one, nz)
+        V.Acubic[nz] = Nonlin_Cubic_Solver(cubPoly)
+    return V.Acubic
+        
+    
+@numba.guvectorize([(float64[:], float64[:])], '(n)->()', nopython =True) # run repeatedly from E update each time A is desired. 
+def Nonlin_Cubic_Solver(yArr, res):
+    b = np.roots(yArr)
+    for i in range(len(b)):
+        if b[i] >=0:
+            if np.imag(b[i])==0: 
+                res[i] = b[i]
+                break
+            else:
+                res[i] = 0.0
+        else:
+            res[i] =0.0   # Returns V.Acubic[nz]
+
+forLocs ={"epsNum": float64, "epsDom": float64, "eps0": float64, "epsilon" : float64, "nz": int32}                
+@nj(locals = forLocs, nogil=True)
+def NonLinExUpdate(V,P):
+    #epsilon =
+    epsNum = (V.plasmaFreqE*V.plasmaFreqE)
+    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
+    eps0 = P.permit_0   
+    epsilon = 1 + epsNum/epsDom
+    
+    for nz in range(P.materialFrontEdge, P.materialRearEdge):
+        V.Ex[nz] = V.Dx[nz]/(eps0*epsilon +eps0*V.chi3Stat*V.Acubic[nz])
+    #E = D/(epsilon zero*epsilon + eps0*chi3*A)
+    return V.Ex
+
 
 
 

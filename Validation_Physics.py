@@ -49,7 +49,8 @@ def VideoMaker(P,V):
         ax.clear()
         ax.set_xlim(0, P.Nz)
         ax.set_ylim(-2,2)
-        ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
+        if P.FreeSpace == False:
+            ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
         if P.CPMLXm == True:
             ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
         if P.CPMLXp == True:
@@ -58,7 +59,7 @@ def VideoMaker(P,V):
         ax.axvspan(P.x2Loc, P.x2Loc+2 , alpha=1, color='red')
         
         ax.plot(np.real(V.Ex_History[i]))    
-        stringTit = "Ex @ timeStep", str(i)
+        stringTit = "Ex @ timeStep", str(i*P.vidInterval)
         plt.title(stringTit)
         plt.savefig(path + "/" + str(i) + ".png")
     

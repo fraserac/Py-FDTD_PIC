@@ -16,7 +16,7 @@ import math as ma
 
 
 
-def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[], P=[]):# domain size and freq 
+def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[], P=[], nonLinMed = False, LorMed = False):# domain size and freq 
     pi = np.pi
     
     #CHOSEN GAMMA HAS 1 IN FRONT NOT 2!!
@@ -38,11 +38,17 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     if VExists: 
         Nlam =int(60*(np.real(epsilon))**1.05)
         print("in VExists env setup, max eps = ", np.max(np.real(epsilon)))
+        if nonLinMed:
+            Nlam = int(200*(np.real(epsilon))**1.05)
     elif VExists ==False:
-        Nlam = 50
+        Nlam = 400
+        if nonLinMed: 
+            Nlam = 350
     dz =lamMin/Nlam
     #P.courantNo = 1   # LOOK INTO 2D VERSION
     delT = (dz/c0)*0.95#/(P.c0*np.sqrt(1/(P.dz**2)))  # COUPLED TO DZ THROUGH COURANT CONSTRAINT! 
+    if nonLinMed:
+        delT *=1
     print("delt ->", delT)
    # decimalPlaces =11
    # multiplier = 10 **decimalPlaces
