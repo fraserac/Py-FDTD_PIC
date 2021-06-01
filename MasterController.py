@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 #from TransformHandler import genFourierTrans as gft
 #import TransformHandler as tHand
-import winsound
+#import winsound
 import pyttsx3
 
 from numba import jit
@@ -30,7 +30,7 @@ import timeit
 #from memory_profiler import profile
 import BulkTest as bt
 
-from varname import nameof
+#from varname import nameof
 import sys
 from jinja2 import Template as tmp, FileSystemLoader as fsl, Environment as env
 import os
@@ -48,14 +48,14 @@ from Validation_Physics import VideoMaker
  
 import TransformHandler as transH
 import Solver_Engine as SE
-
+import JuliaHandler as JH
 """
 Below, specify typings of jclass members, as numba 
 doesn't use dynamic typing like base python.
 
 """
 specR=[('dict1', DictType(string, string))]
-@jclass(specR)
+#@jclass(specR)
 class Reporter(object):
     def __init__(self):
         self.dict1 = {"": ""}
@@ -141,7 +141,7 @@ specV = [('Nz', int32),
     ('Acubic', float64[:])]
 
          
-@jclass(specV)
+#@jclass(specV)
 class Variables(object):
 
     def __init__(self, Nz, timeSteps, interval, attenAmnt):
@@ -207,11 +207,7 @@ class Variables(object):
 
     def __str__(self):
         return 'Contains data that will change during sim'
-    
-    def __repr__(self):
-        return (f'{self.__class__.__name__}', ": Contains field variables that change during sim")
-       
-        
+
     # methods to handle user input errors during instantiation.
     
 specP=[('Nz', int32),              
@@ -279,10 +275,11 @@ specP=[('Nz', int32),
     ('muRe', float32), 
     ('vidMake', boolean ),
     ('vidInterval', int32), 
-    ('atten', boolean)]
+    ('atten', boolean),
+    ('julia', boolean)]
 
 
-@jclass(specP)
+#@jclass(specP)
 class Params(object):
     def __init__(self,  Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam, MORmode, domainSize, freq_in, delayMOR, LorentzMed = False, nonLinMed = False, SineCont = False, Gaussian = False, TFSF = False):
         
@@ -330,9 +327,8 @@ class Params(object):
         self.vidMake = True
         self.vidInterval = 50
         self.atten = False
-    def __repr__(self):
-        return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
-    
+        self.julia = False
+
     def __str__(self):
         return 'Class containing all values that remain constant throughout a sim' 
 
@@ -345,14 +341,14 @@ specCP = [('kappaMax',float32),
           ('alphaMax',float32),]
 
 ## kmax def most important!
-@jclass(specCP)   # with PLRC-CPML alpha seems to have larger stable range
+#@jclass(specCP)   # with PLRC-CPML alpha seems to have larger stable range
 class CPML_Params(object):  # good params: KappaMax , sigmaEMax ,alphamax , nlam , 
     def __init__(self, dz):
         self.kappaMax =2 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
         self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
         self.r_a_scale=1
         self.sigmaEMax= 0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
-        self.sigmaHMax =self.sigmaHMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
+        self.sigmaHMax =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
         self.sigmaOpt  =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
     #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
         self.alphaMax=0.1# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
@@ -396,7 +392,7 @@ specCV = [('Nz', int32),
           ('psi_Ex_Old', float64[:]),
           ('psi_Hy_Old', float64[:])]
  
-@jclass(specCV)
+#@jclass(specCV)
 class CPML_Variables(object):
     def __init__(self, Nz, timeSteps):
         Nz = Nz+1
@@ -452,25 +448,21 @@ def Controller(V, P, C_V, C_P):
     V.x1ColBe = np.zeros(P.timeSteps)
     V.x1ColAf = np.zeros(P.timeSteps)
 
-    
-    tickee = tim.perf_counter()
-    if P.LorentzMed == True:
+
+    if P.LorentzMed:
          V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = SE.IntegratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
-    elif P.FreeSpace == True: 
+    elif P.FreeSpace:
         V.Ex, V.Hy, Exs, Hys, C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = SE.IntegratorFreeSpace1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
-    elif P.nonLinMed == True:
+    elif P.nonLinMed:
         V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf = SE.IntegratorNL1D(V,P,C_V,C_P,probeReadFinishBe, probeReadStartAf)
-         
-    
-    tockee = tim.perf_counter()
+
+
+
     
    # breakpoint()
    # print("run ", i, " took this many seconds: ", tockee-tickee)
         
     return V, P, C_V, C_P, Exs, Hys
-
- 
-
 
 
 def results(V, P, C_V, C_P, time_Vec,  RefCo = False, FFT = False, AnalRefCo = False, attenRead = False):
@@ -600,10 +592,10 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, str
             
             
             VideoMaker(P, V)
-            winsound.Beep(freq, duration)  
-            engine = pyttsx3.init()
-            engine.say('beep')
-            engine.runAndWait() 
+           # winsound.Beep(freq, duration)
+            #ngine = pyttsx3.init()
+            #engine.say('beep')
+            #engine.runAndWait()
 
 
             #plt.close('all')
@@ -634,7 +626,7 @@ def __Main__():
     freq_in = 6e9
     delayMOR =20
     LorMed = False
-    nonLinMed = True
+    nonLinMed = False
     noOfEnvOuts = 20
     setupReturn = []*noOfEnvOuts
     setupReturn =envDef.envSetup(freq_in, domainSize,lowLimTim,highLimTim, nonLinMed =nonLinMed, LorMed = LorMed)   # this function returns a list with all evaluated model parameters
@@ -657,8 +649,8 @@ def __Main__():
     P.LorentzMed=LorMed # MAKE SURE EPSRE IS 1
     P.nonLinMed = nonLinMed
     ticK = tim.perf_counter()
-    
-    
+    P.julia = True
+
     if P.nonLinMed == True:
         P.FreeSpace = False
         P.LorentzMed = False   # Redundant code because first batch handles all 

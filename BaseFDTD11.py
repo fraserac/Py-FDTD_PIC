@@ -191,7 +191,7 @@ forlocals2 ={'Hys' : float64[:], 'counts' : int32} ### for tf/sf
 def ExTfSfCorr(V,P, counts, Hys):
     V.Ex[P.nzsrc] += Hys[counts]
     return V.Ex[P.nzsrc]
-@nj
+#@nj
 def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml 
     C_V.kappa_Ex =np.ones(P.Nz+1)
     C_V.kappa_Hy = np.ones(P.Nz+1)
@@ -218,7 +218,7 @@ def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml
     return C_V
 
 
-@nj    
+#@nj
 def CPML_ScalingCalc(V, P, C_V, C_P):
     kappa_Ex_n = np.ones(P.pmlWidth)
     sigma_Ex_n = np.zeros(P.pmlWidth)
@@ -270,7 +270,7 @@ def CPML_ScalingCalc(V, P, C_V, C_P):
         
     return C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy
 
-@nj
+#@nj
 def CPML_Ex_RC_Define(V, P, C_V, C_P):
     #window = sign.hann(P.Nz+1)
     
@@ -284,7 +284,7 @@ def CPML_Ex_RC_Define(V, P, C_V, C_P):
    # C_V.beX = sign.convolve(C_V.beX, window, mode= 'same')/np.sum(window)  
     return C_V.beX, C_V.ceX
 
-@nj
+#@nj
 def CPML_HY_RC_Define(V, P, C_V, C_P):
     C_V.bmY[:P.pmlWidth] = np.exp(-((C_V.sigma_Hy[:P.pmlWidth]*P.delT/(C_V.kappa_Hy[:P.pmlWidth]*P.permit_0))+((C_V.alpha_Hy[:P.pmlWidth]*P.delT)/P.permit_0))) 
     C_V.bmY[len(V.Hy)-P.pmlWidth:] = np.exp(-((C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]*P.delT/(C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]*P.permit_0))+((C_V.alpha_Hy[len(V.Hy)-P.pmlWidth:]*P.delT)/P.permit_0))) 
@@ -316,7 +316,7 @@ def CPML_Ex_Update_Coef(V,P, C_V, C_P):
         C_V.Cc[nz] = P.delT/((1+C_V.eLoss_CPML[nz])*P.permit_0)
     return C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc    
 
-@nj
+#@nj
 def CPML_Hy_Update_Coef(V,P, C_V, C_P):
     for nz in range(0, P.pmlWidth):  # Some of these could be redundant check this 
         C_V.C1[nz] =1
@@ -328,7 +328,7 @@ def CPML_Hy_Update_Coef(V,P, C_V, C_P):
         C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
     return C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3   
 
-@nj   
+#@nj
 def denominators(V, P, C_V, C_P):
     jj = P.pmlWidth
        # set denom as vector of ones default
