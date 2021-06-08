@@ -16,13 +16,13 @@ from tqdm import tqdm
 
 #from TransformHandler import genFourierTrans as gft
 #import TransformHandler as tHand
-import winsound
+#import winsound
 import pyttsx3
 
 from numba import jit
 from numba import njit as nj 
 from numba.experimental import jitclass as jclass
-from numba import int32, float32, int64, float64, boolean
+from numba import int32, float32, int64, float64, boolean, complex128
 from numba.typed import Dict
 from numba.types import DictType, List, string, optional
 import time as tim
@@ -30,7 +30,7 @@ import timeit
 #from memory_profiler import profile
 import BulkTest as bt
 
-from varname import nameof
+#from varname import nameof
 import sys
 from jinja2 import Template as tmp, FileSystemLoader as fsl, Environment as env
 import os
@@ -48,7 +48,7 @@ from Validation_Physics import VideoMaker
  
 import TransformHandler as transH
 import Solver_Engine as SE
-
+#import JuliaHandler as JH
 """
 Below, specify typings of jclass members, as numba 
 doesn't use dynamic typing like base python.
@@ -138,7 +138,9 @@ specV = [('Nz', int32),
     ('chi3Stat', float64),
     ('JxKerr', float64[:]),
     ('JxRaman', float64[:]),
-    ('Acubic', float64[:])]
+    ('Acubic', float64[:]),
+    ('cubPoly', complex128[:,:]),
+    ('roots', complex128[:])]
 
          
 @jclass(specV)
@@ -202,16 +204,14 @@ class Variables(object):
         self.JxKerr = np.zeros(Nz)
         self.JxRaman = np.zeros(Nz)
         self.Acubic =np.zeros(Nz)
+        self.cubPoly =np.zeros(4*Nz, dtype=complex128).reshape(Nz, 4)
+        self.roots =np.zeros(4, dtype=complex128)
         
         
 
     def __str__(self):
         return 'Contains data that will change during sim'
-    
-    def __repr__(self):
-        return (f'{self.__class__.__name__}', ": Contains field variables that change during sim")
-       
-        
+
     # methods to handle user input errors during instantiation.
     
 specP=[('Nz', int32),              
@@ -279,7 +279,8 @@ specP=[('Nz', int32),
     ('muRe', float32), 
     ('vidMake', boolean ),
     ('vidInterval', int32), 
-    ('atten', boolean)]
+    ('atten', boolean),
+    ('julia', boolean)]
 
 
 @jclass(specP)
@@ -330,9 +331,8 @@ class Params(object):
         self.vidMake = True
         self.vidInterval = 50
         self.atten = False
-    def __repr__(self):
-        return (f'{self.__class__.__name__}'(f'{self.epsRe!r}, {self.muRe!r}'))
-    
+        self.julia = False
+
     def __str__(self):
         return 'Class containing all values that remain constant throughout a sim' 
 
@@ -352,7 +352,7 @@ class CPML_Params(object):  # good params: KappaMax , sigmaEMax ,alphamax , nlam
         self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
         self.r_a_scale=1
         self.sigmaEMax= 0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
-        self.sigmaHMax =self.sigmaHMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
+        self.sigmaHMax =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
         self.sigmaOpt  =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
     #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
         self.alphaMax=0.1# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
@@ -452,25 +452,21 @@ def Controller(V, P, C_V, C_P):
     V.x1ColBe = np.zeros(P.timeSteps)
     V.x1ColAf = np.zeros(P.timeSteps)
 
-    
-    tickee = tim.perf_counter()
-    if P.LorentzMed == True:
+
+    if P.LorentzMed:
          V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = SE.IntegratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
-    elif P.FreeSpace == True: 
+    elif P.FreeSpace:
         V.Ex, V.Hy, Exs, Hys, C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = SE.IntegratorFreeSpace1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
-    elif P.nonLinMed == True:
+    elif P.nonLinMed:
         V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf = SE.IntegratorNL1D(V,P,C_V,C_P,probeReadFinishBe, probeReadStartAf)
-         
-    
-    tockee = tim.perf_counter()
+
+
+
     
    # breakpoint()
    # print("run ", i, " took this many seconds: ", tockee-tickee)
         
     return V, P, C_V, C_P, Exs, Hys
-
- 
-
 
 
 def results(V, P, C_V, C_P, time_Vec,  RefCo = False, FFT = False, AnalRefCo = False, attenRead = False):
@@ -600,10 +596,10 @@ def LoopedSim(Rep, V,P,C_V, C_P, MORmode, domainSize, lowLimTim, highLimTim, str
             
             
             VideoMaker(P, V)
-            winsound.Beep(freq, duration)  
-            engine = pyttsx3.init()
-            engine.say('beep')
-            engine.runAndWait() 
+           # winsound.Beep(freq, duration)
+            #ngine = pyttsx3.init()
+            #engine.say('beep')
+            #engine.runAndWait()
 
 
             #plt.close('all')
@@ -657,8 +653,8 @@ def __Main__():
     P.LorentzMed=LorMed # MAKE SURE EPSRE IS 1
     P.nonLinMed = nonLinMed
     ticK = tim.perf_counter()
-    
-    
+    P.julia = False
+
     if P.nonLinMed == True:
         P.FreeSpace = False
         P.LorentzMed = False   # Redundant code because first batch handles all 

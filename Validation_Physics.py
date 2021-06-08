@@ -1,4 +1,3 @@
-
 """
 Validation_Physics
 
@@ -8,87 +7,92 @@ appropriately
 import os
 import sys
 import shutil
-import cv2
 import natsort
 import numpy as np
 import scipy as sci
 from tqdm import tqdm
 import matplotlib.pylab as plt
+import moviepy.video.io.ImageSequenceClip
 
 
-
-def VideoMaker(P,V):
+def VideoMaker(P, V):
     fig, ax = plt.subplots()
-    interval =100
-    my_path = os.getcwd() 
+    interval = 100
+    my_path = os.getcwd()
     newDir = "Ex fields"
     path = os.path.join(my_path, newDir)
-    
-    try:     ##### BE VERY CAREFUL! THIS DELETES THE FOLDER AT THE PATH DESTINATION!!!!
+
+    try:  ##### BE VERY CAREFUL! THIS DELETES THE FOLDER AT THE PATH DESTINATION!!!!
         shutil.rmtree(path)
     except OSError as e:
-        print ("Tried to delete folder Error: no such directory exists")
-        
-        
+        print("Tried to delete folder Error: no such directory exists")
+
     try:
         os.mkdir(path)
     except OSError:
-        print ("Creation of the directory %s failed" %path)
+        print("Creation of the directory %s failed" % path)
     else:
-        print ("Successfully created the directory %s " %path)
-        
-        
+        print("Successfully created the directory %s " % path)
+
     """
     #Next up we iterate through the time steps of Ex_History (an array of arrays containing all y data from each time step)
     #and create a plot for each time step, including the dielectric material. 
-    
+
     #these plots are converted to png files and saved in the new folder in the working directory
     """
     for i in tqdm(range(0, len(V.Ex_History))):
-      ##breakpoint()
+        ##breakpoint()
         ax.clear()
         ax.set_xlim(0, P.Nz)
-        ax.set_ylim(-2,2)
+        ax.set_ylim(-2, 2)
         if P.FreeSpace == False:
-            ax.axvspan(P.materialFrontEdge, P.materialRearEdge , alpha=0.5, color='green')
+            ax.axvspan(P.materialFrontEdge, P.materialRearEdge, alpha=0.5, color='green')
         if P.CPMLXm == True:
-            ax.axvspan(0, P.pmlWidth-1 , alpha=0.2, color='blue')
+            ax.axvspan(0, P.pmlWidth - 1, alpha=0.2, color='blue')
         if P.CPMLXp == True:
-            ax.axvspan(P.Nz-1-P.pmlWidth, P.Nz-1 , alpha=0.2, color='blue')
-        ax.axvspan(P.x1Loc, P.x1Loc+2 , alpha=1, color='black')
-        ax.axvspan(P.x2Loc, P.x2Loc+2 , alpha=1, color='red')
-        
-        ax.plot(np.real(V.Ex_History[i]))    
-        stringTit = "Ex @ timeStep", str(i*P.vidInterval)
+            ax.axvspan(P.Nz - 1 - P.pmlWidth, P.Nz - 1, alpha=0.2, color='blue')
+        ax.axvspan(P.x1Loc, P.x1Loc + 2, alpha=1, color='black')
+        ax.axvspan(P.x2Loc, P.x2Loc + 2, alpha=1, color='red')
+
+        ax.plot(np.real(V.Ex_History[i]))
+        stringTit = "Ex @ timeStep", str(i * P.vidInterval)
         plt.title(stringTit)
         plt.savefig(path + "/" + str(i) + ".png")
-    
-    
+
     """
     #Next we collect all the images in the new directory and sort them numerically, then use OpenCV to create a 24fps video
     """
-    
+    fps = 15
     image_folder = path
     video_name = 'Ex in 1D FDTD.mp4'
-    
+    image_files = [image_folder + '/' + img for img in os.listdir(image_folder) if img.endswith(".png")]
+    image_files = natsort.natsorted(image_files)
+    clip = moviepy.video.io.ImageSequenceClip.ImageSequenceClip(image_files, fps=fps)
+    clip.write_videofile(video_name, codec='mpeg4')
+    """
     images = [img for img in os.listdir(image_folder) if img.endswith(".png")]
-    
+
     images = natsort.natsorted(images)  # without this python does a weird alphabetical sort that doesn't work
-        
-    
+
+
     frame = cv2.imread(os.path.join(image_folder, images[0]))
     height, width, layers = frame.shape
     framesPerSec =5
-    video = cv2.VideoWriter(video_name, 0, framesPerSec, (width,height))
+
+
+    #fourcc = cv2.VideoWriter_fourcc(*'avi')
+    video = cv2.VideoWriter(video_name, -1,framesPerSec, (int(width),int(height)))
     for image in images:
-        video.write(cv2.imread(os.path.join(image_folder, image)))
+        video.write(cv2.imread(np.float32((os.path.join(image_folder, image)))))
         #print(image)
-    
+
     cv2.destroyAllWindows()
     video.release()
     plt.close()
-    
-# GRAPHS AND OTHER THINGS HERE. 
+    """
+
+
+# GRAPHS AND OTHER THINGS HERE.
 """
 def verification(P, V, assertion):## dispersion checks
     kNumerical = 2/(P.dz)*np.sqrt((np.arcsin(dz/(c0*dt))**2*np.sin(np.pi*freq_in*dt)*np.sin(np.pi*freq_in*dt)))

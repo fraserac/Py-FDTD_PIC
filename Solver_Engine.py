@@ -11,6 +11,7 @@ import genericStability as gStab
 import numpy as np
 from numba import njit as nj
 from numba import jit
+import JuliaHandler as JH
 
 def probeSim(V, P, C_V, C_P, counts, val = "null", af = False, granAttn = 25,  whichField = "Ex", attenRead = False ):
     """
@@ -146,129 +147,118 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
         Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp, tau = tauIn)
         
         #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
-        for counts in range(0,P.timeSteps):
-                    
-                #if counts%(int(P.timeSteps/10)) == 0:
-                 #   print("timestep progress:", counts, "/", P.timeSteps)
-                V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P, counts)
-                if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
-                    C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-                
-                ## SOURCE MANAGER COMES IN HERE
-               
-                V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
-                if P.TFSF == True:
-                    V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
-                ####
-                V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-                if P.CPMLXp == True or P.CPMLXm == True:
-                   C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
-                
-                ##################
-                V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-                #V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
-                
-                #########################
-                
-                    
-            
-                if counts >0:
-                    if counts % P.vidInterval ==0:
-                        if i == 1:
-                            V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
-                
-                # option to not store history, and even when storing, only store in 
-                #intervals 
-                
-                
-        
-                if i == 0:
-                     if counts <= P.timeSteps-1:
-                         if counts <= probeReadFinishBe:
-                                 V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
-                             #change this from Ex history
-                elif i ==1:
+
+        if P.julia:
+            V,P,C_V,C_P = JH.Jul_Integrator_Prep(V, P, C_V, C_P, Exs, Hys, i)
+        else:
+            for counts in range(0,P.timeSteps):
+
+                    #if counts%(int(P.timeSteps/10)) == 0:
+                     #   print("timestep progress:", counts, "/", P.timeSteps)
+                    V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P, counts)
+                    if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x-
+                        C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
+
+                    ## SOURCE MANAGER COMES IN HERE
+
+                    V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
+                    if P.TFSF == True:
+                        V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
+                    ####
+                    V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
+                    if P.CPMLXp == True or P.CPMLXm == True:
+                       C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
+
+                    ##################
+                   # V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
+                    #V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
+
+                    #########################
+
+
+
+                    if counts >0:
+                        if counts % P.vidInterval ==0:
+                            if i == 1:
+                                V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
+
+                    # option to not store history, and even when storing, only store in
+                    #intervals
+
+
+
+                    if i == 0:
                          if counts <= P.timeSteps-1:
-                             if counts >= probeReadStartAf:
-                                     V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
-                                     if P.atten == True:
-                                         V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
-                                
-        #FDdata, FDXaxis, FDdataPow = gft(V,P, C_V, C_P, V.x1ColBe)   # freq dom stuff for reflection
-        
+                             if counts <= probeReadFinishBe:
+                                     V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
+                                 #change this from Ex history
+                    elif i ==1:
+                             if counts <= P.timeSteps-1:
+                                 if counts >= probeReadStartAf:
+                                         V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
+                                         if P.atten == True:
+                                             V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
+
+            #FDdata, FDXaxis, FDdataPow = gft(V,P, C_V, C_P, V.x1ColBe)   # freq dom stuff for reflection
+
     return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf   #Do I need to return C_V?
 
 
 
 # Need to set up options so can choose field with nonlinearity/dispersion etc
 def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
-     for i in range(0,2):
-        
-        V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)  #Not necessary?
-        
-        
-        V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)   
-    # move these into bc manager, call bc manager from here
-        C_V = BaseFDTD11.CPML_FieldInit(V,P, C_V, C_P)
-        C_V = boundCondManager(V, P, C_V, C_P)
-        
-        lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
-        Exs, Hys = SourceManager(V, P, C_V, C_P)
-        Exs = Sig_Mod(V,P, Exs)
-        Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp)
-        
-        for counts in range(0,P.timeSteps):
-          
-           
-           if i == 1:
-                V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-                V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
-                
-           V.Ex =BaseFDTD11.ADE_ExUpdate(V, P, C_V, C_P, counts) 
-                # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)  
-           
-           if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
-                    C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-                  
-           V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
-           
-           if P.TFSF == True:
-                V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
-                
-           
-           
-           V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)  # Linear bit
-          # V.Ex =BaseFDTD11.ADE_ExCreate(V, P, C_V, C_P) 
-           V.Acubic = BaseFDTD11.AcubicFinder(V,P)
-           
-           V.Ex = BaseFDTD11.NonLinExUpdate(V,P)
-           V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-           if P.CPMLXp == True or P.CPMLXm == True:
-                   C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
-          
-           if counts >0:
-               if counts % P.vidInterval ==0:
-                   if i == 1:
-                       V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
-           
-           # option to not store history, and even when storing, only store in 
-           #intervals 
-           
-           
-   
-           if i == 0:
-                if counts <= P.timeSteps-1:
-                    if counts <= probeReadFinishBe:
-                            V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
-                        #change this from Ex history
-           elif i ==1:
-                    if counts <= P.timeSteps-1:
-                        if counts >= probeReadStartAf:
-                                V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
-                                if P.atten == True:
-                                    V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
-                   
-     return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
+
+    i = 1
+    V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)  #Not necessary?
+
+
+    V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)
+# move these into bc manager, call bc manager from here
+    C_V = BaseFDTD11.CPML_FieldInit(V,P, C_V, C_P)
+    C_V = boundCondManager(V, P, C_V, C_P)
+
+    lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
+    Exs, Hys = SourceManager(V, P, C_V, C_P)
+    Exs = Sig_Mod(V,P, Exs)
+    Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp)
+
+    for counts in range(0,P.timeSteps):
+
+
+       if i == 1:
+            V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
+            V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
+
+       V.Ex =BaseFDTD11.ADE_ExUpdate(V, P, C_V, C_P, counts)
+            # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)
+
+       if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x-
+                C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
+
+       V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
+
+       if P.TFSF == True:
+            V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
+
+
+
+       V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)  # Linear bit
+      # V.Ex =BaseFDTD11.ADE_ExCreate(V, P, C_V, C_P)
+       V.Acubic = BaseFDTD11.AcubicFinder(V,P)
+       if not counts % 200:
+           print(counts)
+       V.Ex = BaseFDTD11.NonLinExUpdate(V,P)
+       V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
+       if P.CPMLXp == True or P.CPMLXm == True:
+               C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
+
+       if counts >0:
+           if counts % P.vidInterval ==0:
+               if i == 1:
+                   V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
+
+
+    return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
 
 
     
@@ -371,151 +361,7 @@ def IntegratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf):
     return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
 
 
-def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
-    for i in range(0,2):
-        V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)
-        #analReflectCo, dispPhaseVel, realV = BaseFDTD11.AnalyticalReflectionE(V,P)
-        
-        V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)   
-        
-        V.epsilon, V.mu, V.UpExHcompsCo, V.UpExSelf, V.UpHyEcompsCo, V.UpHySelf = BaseFDTD11.Material(V,P)
-        V.UpHyMat, V.UpExMat = BaseFDTD11.UpdateCoef(V,P)
-    # move these into bc manager, call bc manager from here
-        C_V = BaseFDTD11.CPML_FieldInit(V,P, C_V, C_P)
-        C_V = boundCondManager(V, P, C_V, C_P)
-      
-        # PROBABLY BETTER TO RUN THIS IN LINEAR DISP INTEGRATOR
-        #lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
-        Exs, Hys = SourceManager(V, P, C_V, C_P)
-        tauIn=1/(P.freq_in/5)
-        Exs = Sig_Mod(V, P, Exs, tau= tauIn)
-        Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp, tau = tauIn)
-        
-        #gStab.vonNeumannAnalysis(V,P,C_V,C_P)
-        for counts in range(0,P.timeSteps):
-                    
-                #if counts%(int(P.timeSteps/10)) == 0:
-                 #   print("timestep progress:", counts, "/", P.timeSteps)
-                V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P, counts)
-                if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
-                    C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-                
-                ## SOURCE MANAGER COMES IN HERE
-               
-                V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
-                if P.TFSF == True:
-                    V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
-                ####
-                V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-                if P.CPMLXp == True or P.CPMLXm == True:
-                   C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
-                
-                ##################
-                V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-                #V.Ex = BaseFDTD11.MUR1DEx(V, P, C_V, C_P)
-                
-                #########################
-                
-                    
-            
-                if counts >0:
-                    if counts % P.vidInterval ==0:
-                        if i == 1:
-                            V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
-                
-                # option to not store history, and even when storing, only store in 
-                #intervals 
-                
-                
-        
-                if i == 0:
-                     if counts <= P.timeSteps-1:
-                         if counts <= probeReadFinishBe:
-                                 V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
-                             #change this from Ex history
-                elif i ==1:
-                         if counts <= P.timeSteps-1:
-                             if counts >= probeReadStartAf:
-                                     V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
-                                     if P.atten == True:
-                                         V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
-                                
-        #FDdata, FDXaxis, FDdataPow = gft(V,P, C_V, C_P, V.x1ColBe)   # freq dom stuff for reflection
-        
-    return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf   #Do I need to return C_V?
-
-
-
 # Need to set up options so can choose field with nonlinearity/dispersion etc
 
-def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
-     #for i in range(0,2):
-        
-    V.tempVarPol, V.tempTempVarE, V.tempVarE, V.tempTempVarPol, V.polarisationCurr, V.Ex, V.Dx, V.Hy = BaseFDTD11.FieldInit(V,P)  #Not necessary?
-    
-    
-    V.UpHyMat, V.UpExMat = BaseFDTD11.EmptySpaceCalc(V,P)   
-# move these into bc manager, call bc manager from here
-    C_V = BaseFDTD11.CPML_FieldInit(V,P, C_V, C_P)
-    C_V = boundCondManager(V, P, C_V, C_P)
-    
-    lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
-    Exs, Hys = SourceManager(V, P, C_V, C_P)
-    #Exs = Sig_Mod(V,P, Exs)
-    #Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp)
-    
-    for counts in range(0,P.timeSteps):
-       if counts %250 ==0:
-            print("Timestep: ", counts)
-       
-      # if i == 1:
-       V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-       V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
-            
-       V.Ex =BaseFDTD11.ADE_ExUpdate(V, P, C_V, C_P, counts) 
-            # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)  
-       
-       if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x- 
-                C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
-              
-       V.Ex[P.nzsrc] += Exs[counts]/P.courantNo
-       
-       if P.TFSF == True:
-            V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
-            
-       
-       
-       V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)  # Linear bit
-       V.Ex =BaseFDTD11.ADE_ExCreate(V, P, C_V, C_P) 
-       ####Nonlinear bit
-       V.Ex = BaseFDTD11.ADE_ExNonlin3Create(V, P, C_V, C_P, counts)
-       V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-       if P.CPMLXp == True or P.CPMLXm == True:
-               C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
-      
-       if counts >0:
-           if counts % P.vidInterval ==0:
-               #if i == 1:
-                V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
-       
-       # option to not store history, and even when storing, only store in 
-       #intervals 
-       if counts <= P.timeSteps-1:          
-           V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
-       
-   
-       # if i == 0:
-       #      if counts <= P.timeSteps-1:
-       #          if counts <= probeReadFinishBe:
-       #                  V.x1ColBe= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x1Loc])
-       #              #change this from Ex history
-       # elif i ==1:
-       #          if counts <= P.timeSteps-1:
-       #              if counts >= probeReadStartAf:
-       #                      V.x1ColAf= probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], af = True)
-       #                      if P.atten == True:
-       #                          V.x1Atten = probeSim(V, P, C_V, C_P, counts, V.Ex[P.x2Loc], attenRead = True)
-               
-    return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf
 
 

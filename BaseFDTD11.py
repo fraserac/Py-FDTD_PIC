@@ -16,7 +16,7 @@ from scipy import signal as sign
 import sys 
 import numba
 from numba import njit as nj
-from numba import jit
+from numba import jit,prange
 
 from numba import int32, float32, int64, float64, boolean, complex128
 
@@ -191,7 +191,7 @@ forlocals2 ={'Hys' : float64[:], 'counts' : int32} ### for tf/sf
 def ExTfSfCorr(V,P, counts, Hys):
     V.Ex[P.nzsrc] += Hys[counts]
     return V.Ex[P.nzsrc]
-@nj
+#@nj
 def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml 
     C_V.kappa_Ex =np.ones(P.Nz+1)
     C_V.kappa_Hy = np.ones(P.Nz+1)
@@ -218,7 +218,7 @@ def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml
     return C_V
 
 
-@nj    
+#@nj
 def CPML_ScalingCalc(V, P, C_V, C_P):
     kappa_Ex_n = np.ones(P.pmlWidth)
     sigma_Ex_n = np.zeros(P.pmlWidth)
@@ -270,7 +270,7 @@ def CPML_ScalingCalc(V, P, C_V, C_P):
         
     return C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy
 
-@nj
+#@nj
 def CPML_Ex_RC_Define(V, P, C_V, C_P):
     #window = sign.hann(P.Nz+1)
     
@@ -284,7 +284,7 @@ def CPML_Ex_RC_Define(V, P, C_V, C_P):
    # C_V.beX = sign.convolve(C_V.beX, window, mode= 'same')/np.sum(window)  
     return C_V.beX, C_V.ceX
 
-@nj
+#@nj
 def CPML_HY_RC_Define(V, P, C_V, C_P):
     C_V.bmY[:P.pmlWidth] = np.exp(-((C_V.sigma_Hy[:P.pmlWidth]*P.delT/(C_V.kappa_Hy[:P.pmlWidth]*P.permit_0))+((C_V.alpha_Hy[:P.pmlWidth]*P.delT)/P.permit_0))) 
     C_V.bmY[len(V.Hy)-P.pmlWidth:] = np.exp(-((C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]*P.delT/(C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]*P.permit_0))+((C_V.alpha_Hy[len(V.Hy)-P.pmlWidth:]*P.delT)/P.permit_0))) 
@@ -316,7 +316,7 @@ def CPML_Ex_Update_Coef(V,P, C_V, C_P):
         C_V.Cc[nz] = P.delT/((1+C_V.eLoss_CPML[nz])*P.permit_0)
     return C_V.eLoss_CPML, C_V.Ca, C_V.Cb, C_V.Cc    
 
-@nj
+#@nj
 def CPML_Hy_Update_Coef(V,P, C_V, C_P):
     for nz in range(0, P.pmlWidth):  # Some of these could be redundant check this 
         C_V.C1[nz] =1
@@ -328,7 +328,7 @@ def CPML_Hy_Update_Coef(V,P, C_V, C_P):
         C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
     return C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3   
 
-@nj   
+#@nj
 def denominators(V, P, C_V, C_P):
     jj = P.pmlWidth
        # set denom as vector of ones default
@@ -674,21 +674,11 @@ def ADE_MyUpdate():
 
 #forlocalsAEX= { 'betaE': float64, 'kapE' : float64, 'counts':int32 }
 @nj
-def ADE_ExUpdate(V, P, C_V, C_P, counts): 
-   
-   
-    
+def ADE_ExUpdate(V, P, C_V, C_P, counts):
     for nz in range(1, len(V.Ex)):
          
         V.Ex[nz]=V.Ex[nz] +(V.Hy[nz]-V.Hy[nz-1]-V.Jx[nz])*V.UpExMat[nz]*C_V.den_Exdz[nz]#-(1/(epsInf))*(V.polarisationCurr[nz]-V.tempTempVarPol[nz])#*C_V.den_Exdz[nz] #-(P.delT/P.permit_0)*C_V.psi_Ex[nz]
-        
 
-    """
-    if np.sum(np.isnan(V.Ex))>0:
-        breakpoint()
-    if np.sum(np.isinf(V.Ex))>0:
-        breakpoint()
-    """
     return V.Ex
 
 
@@ -813,48 +803,65 @@ def MUR1DEx(V,P, C_V, C_P):
 #if below works clean out redundant code
 
 #Andrey Sukhorukov, Comparative study of FDTD adopted...
-def Nonlin_Eqn_Setup(cub, qua, one, nz):
-    cubicPoly =  np.array([cub, qua, one, -np.abs(V.Dx[nz]/P.permit_0)**2])
-    return cubicPoly
+locs = {"cub": float64, "qua":float64, "one": float64, "nz": int32}
+@nj(locals=locs, nogil =True )
+def Nonlin_Eqn_Setup(V, P, cub, qua, one, nz):
+    out = np.array([cub, qua, one, -np.abs(V.Dx[nz]/P.permit_0)**2])
+    #print(out.dtype)
+    for nz in range(len(out)):
+        V.cubPoly[nz] = complex128(out[nz])
+    return V.cubPoly[nz,:]
 
+@nj(nogil=True)
 def AcubicFinder(V,P):
     epsNum = (V.plasmaFreqE*V.plasmaFreqE)
-    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
+    epsDom = (V.omega_0E*V.omega_0E-(2*np.pi*P.freq_in*2*np.pi*P.freq_in) + 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
-    cub = (V.alpha*V.chi3Stat)**2
-    qua = 2*np.real(V.alpha*epsilon*V.chi3Stat)
+    cub = (V.alpha3*V.chi3Stat)**2
+    qua = 2*np.real(V.alpha3*epsilon*V.chi3Stat)
     one = np.abs(epsilon)**2
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
-        cubPoly = Nonlin_Eqn_Setup(cub, qua, one, nz)
-        V.Acubic[nz] = Nonlin_Cubic_Solver(cubPoly)
+        V.cubPoly[nz,:] = Nonlin_Eqn_Setup(V, P, cub, qua, one, nz)
+
+    #outp = Nonlin_Cubic_Solver(V, P)
+    #breakpoint()
+    V.Acubic[P.materialFrontEdge:P.materialRearEdge] = np.real(Nonlin_Cubic_Solver(V,P)[P.materialFrontEdge:P.materialRearEdge])
     return V.Acubic
         
-    
-@numba.guvectorize([(float64[:], float64[:])], '(n)->()', nopython =True) # run repeatedly from E update each time A is desired. 
-def Nonlin_Cubic_Solver(yArr, res):
-    b = np.roots(yArr)
-    for i in range(len(b)):
-        if b[i] >=0:
-            if np.imag(b[i])==0: 
-                res[i] = b[i]
-                break
-            else:
-                res[i] = 0.0
-        else:
-            res[i] =0.0   # Returns V.Acubic[nz]
+# run repeatedly from E update each time A is desired.
 
-forLocs ={"epsNum": float64, "epsDom": float64, "eps0": float64, "epsilon" : float64, "nz": int32}                
-@nj(locals = forLocs, nogil=True)
+@nj(nogil = True, parallel=True)
+def Nonlin_Cubic_Solver(V, P):
+    out = complex128([0])
+    for nz in range(P.Nz - 1):
+        out = np.append(out, complex128(0))
+    for jj in prange(P.materialRearEdge, P.materialRearEdge):
+        V.roots = np.roots(V.cubPoly[jj])
+        for i in prange(len(V.roots)):
+            if np.real(V.roots).any() >=0:
+                comp = np.imag(V.roots[i])
+                if comp >=0:
+                    out[jj]= V.roots[i]
+                    break
+                else:
+                    out[jj]= complex(0,0)
+            else:
+                out[jj]= complex(0,0)   # Returns V.Acubic[nz]
+    return out
+
+#forLocs ={"epsNum": float64, "epsDom": float64, "eps0": float64, "epsilon" : float64, "nz": int32}
+#@nj(locals = forLocs, nogil=True)
 def NonLinExUpdate(V,P):
     #epsilon =
     epsNum = (V.plasmaFreqE*V.plasmaFreqE)
-    epsDom = (V.omega_0E*V.omega_0E-(2*pi*P.freq_in*2*pi*P.freq_in) + 1j*V.gammaE*2*pi*P.freq_in)
+    epsDom = (V.omega_0E*V.omega_0E-(2*np.pi*P.freq_in*2*np.pi*P.freq_in) + 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
     epsilon = 1 + epsNum/epsDom
     
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
-        V.Ex[nz] = V.Dx[nz]/(eps0*epsilon +eps0*V.chi3Stat*V.Acubic[nz])
+        V.Ex[nz] = V.Dx[nz]/(eps0*np.real(epsilon) +eps0*V.chi3Stat*V.Acubic[nz])
+    #breakpoint()
     #E = D/(epsilon zero*epsilon + eps0*chi3*A)
     return V.Ex
 
