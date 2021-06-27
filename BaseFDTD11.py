@@ -19,7 +19,7 @@ from numba import njit as nj
 from numba import jit,prange
 
 from numba import int32, float32, int64, float64, boolean, complex128
-
+from Integration_Tester import testerFuncVector as tfv
 
 
 ### CONSIDER IMPLEMENTING DIFFERENT SOURCES RF, gaussian, ricker, as well as sine pulse
@@ -852,17 +852,23 @@ def Nonlin_Cubic_Solver(V, P):
 
 #forLocs ={"epsNum": float64, "epsDom": float64, "eps0": float64, "epsilon" : float64, "nz": int32}
 #@nj(locals = forLocs, nogil=True)
+@nj
 def NonLinExUpdate(V,P):
     #epsilon =
     epsNum = (V.plasmaFreqE*V.plasmaFreqE)
     epsDom = (V.omega_0E*V.omega_0E-(2*np.pi*P.freq_in*2*np.pi*P.freq_in) + 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
-    epsilon = 1 + epsNum/epsDom
-    
+    epsilon = np.sqrt(1.2)#1 + epsNum/epsDom
+    #matching: A simple and rigorous verification technique for nonlinearFDTD algorithms by optical parametric four-wave mixing
+    prev = V.Ex
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
         V.Ex[nz] = V.Dx[nz]/(eps0*np.real(epsilon) +eps0*V.chi3Stat*V.Acubic[nz])
-    #breakpoint()
-    #E = D/(epsilon zero*epsilon + eps0*chi3*A)
+
+    aft = V.Ex
+    #if P.testMode:
+     #   dictRep = {}
+      #  dictRep = tfv(prev, aft)
+
     return V.Ex
 
 

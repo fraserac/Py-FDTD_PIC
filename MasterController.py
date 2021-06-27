@@ -199,14 +199,14 @@ class Variables(object):
         self.Pbar3 = np.zeros(Nz)
         self.nonLin3gammaE = 0
         self.nonLin3Omega_0E = 6e9
-        self.chi1Stat = 0.69617
-        self.chi3Stat = 7e-1
+        self.chi1Stat = np.sqrt(1.2)-1
+        self.chi3Stat = 1e-18
         self.JxKerr = np.zeros(Nz)
         self.JxRaman = np.zeros(Nz)
         self.Acubic =np.zeros(Nz)
         self.cubPoly =np.zeros(4*Nz, dtype=complex128).reshape(Nz, 4)
         self.roots =np.zeros(4, dtype=complex128)
-        
+        #self.dictRep = {}
         
 
     def __str__(self):
@@ -280,7 +280,8 @@ specP=[('Nz', int32),
     ('vidMake', boolean ),
     ('vidInterval', int32), 
     ('atten', boolean),
-    ('julia', boolean)]
+    ('julia', boolean),
+    ('testMode', boolean)]
 
 
 @jclass(specP)
@@ -332,6 +333,7 @@ class Params(object):
         self.vidInterval = 50
         self.atten = False
         self.julia = False
+        self.testMode = False
 
     def __str__(self):
         return 'Class containing all values that remain constant throughout a sim' 
@@ -624,10 +626,10 @@ def __Main__():
     print("Code started at: ", startedTime)
     loopMode =False
     MORmode = False
-    domainSize=0.4   #metres
+    domainSize=0.8   #metres
     lowLimTim = 2000
     highLimTim = 3000 # More rigorous via speed of wave and dist 
-    freq_in = 6e9
+    freq_in = 9e9
     delayMOR =20
     LorMed = False
     nonLinMed = True
@@ -654,7 +656,7 @@ def __Main__():
     P.nonLinMed = nonLinMed
     ticK = tim.perf_counter()
     P.julia = False
-
+    P.testMode = True
     if P.nonLinMed == True:
         P.FreeSpace = False
         P.LorentzMed = False   # Redundant code because first batch handles all 

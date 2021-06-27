@@ -13,6 +13,10 @@ import numpy as np
 import scipy.constants as sci
 import sys
 import math as ma
+import matplotlib as mpl
+from matplotlib import pyplot as plt
+import threading
+import time
 
 
 
@@ -138,10 +142,10 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
         print('The probe for fft is in the PML region')
         sys.exit()   
     
-    MaterialDistFromPml = int(0.1/dz)
+    MaterialDistFromPml = int(0.15/dz)
    # print(MaterialDistFromPml)
     materialFrontEdge = MaterialDistFromPml + pmlWidth   # Discrete tile where material begins (array index)
-    materialRearEdge =  Nz-1
+    materialRearEdge =  Nz - pmlWidth - int(0.15/dz)
     MaterialWidth = materialRearEdge-materialFrontEdge
    
     if MaterialWidth < 10:
@@ -162,6 +166,26 @@ def envSetup(newFreq_in, domainSize, minim=400, maxim=600, VExists =False, V =[]
     eHcompsCo = 1/(1+eLoss)
     hSelfCo = (1-mLoss)/(1+mLoss)
     hEcompsCo = 1/(1+mLoss)
-    
+    mpl.use("Qt5Agg")
+    fig, ax = plt.subplots()
+    ax.clear()
+    ax.set_xlim(0, Nz)
+    ax.set_ylim(-2, 2)
+
+    ax.axvspan(materialFrontEdge, materialRearEdge, alpha=0.5, color='green')
+
+    ax.axvspan(0, pmlWidth - 1, alpha=0.2, color='blue')
+
+    ax.axvspan(Nz - 1 - pmlWidth, Nz - 1, alpha=0.2, color='blue')
+
+    ax.axvspan(nzsrc, nzsrc + 5, alpha=1, color='red')
+
+    plt.show()
+    print("Continuing...")
+
+
+
+
+
     return Nz, timeSteps, eLoss, mLoss, eSelfCo, eHcompsCo, hSelfCo, hEcompsCo, x1Loc, x2Loc, materialFrontEdge, materialRearEdge, pmlWidth, nzsrc, lamMin, dz, delT, courantNo, period, Nlam 
    
