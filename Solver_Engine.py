@@ -7,48 +7,52 @@ Solver_Engine
 controls integration steps based off of media in simulation. 
 """
 import BaseFDTD11 
-import genericStability as gStab
+import Tests.genericStability as gStab
 import numpy as np
 from numba import njit as nj
 from numba import jit
-import JuliaHandler as JH
 
-def probeSim(V, P, C_V, C_P, counts, val = "null", af = False, granAttn = 25,  whichField = "Ex", attenRead = False ):
+
+def probeSim(V, P, C_V, C_P, counts, val = "null", af = False, granAttn = 25,  whichField = "Ex", attenRead = False, nonlinear = False):
     """
     Take current value of whatever quantity is being probed from
     and add to x1ColBe or x1ColAf array. 
     """
+    if not nonlinear:
     
-    
-        #Multi layer probe plot choice of layer granularity? 10 as default. 
-        #Functions basically the same as the other probes, but starts at 
-        #matfront +5 then adds probes at chosen spaces and frequency.
-        #eventually fourier transform each row of 2d array and return 
-        #amplitude relative to amplitude of free space (x1ColBe) 
-        #build in optional stuff later, beers law for proper 
-        # create list of inputs: if this works, move granAttn and attenAmnt to 
-        #P class. 
-    if attenRead == True:    
-        inds = np.arange(P.materialFrontEdge, granAttn*V.attenAmnt + P.materialFrontEdge, granAttn)
-       # listOfIndAtten = [inds]
-   
-        for i in range(len(V.x1Atten)):
-            if whichField == "Ex":
-                V.x1Atten[i][counts] =  V.Ex[inds[i]]
-        return V.x1Atten
-                
-    elif af == True:
-        V.x1ColAf[counts] = val
-        return V.x1ColAf
+            #Multi layer probe plot choice of layer granularity? 10 as default.
+            #Functions basically the same as the other probes, but starts at
+            #matfront +5 then adds probes at chosen spaces and frequency.
+            #eventually fourier transform each row of 2d array and return
+            #amplitude relative to amplitude of free space (x1ColBe)
+            #build in optional stuff later, beers law for proper
+            # create list of inputs: if this works, move granAttn and attenAmnt to
+            #P class.
+        if attenRead == True:
+            inds = np.arange(P.materialFrontEdge, granAttn*V.attenAmnt + P.materialFrontEdge, granAttn)
+           # listOfIndAtten = [inds]
 
-    
-    elif af == False:
-       # breakpoint()
-        V.x1ColBe[counts] = val
-    
-        return V.x1ColBe
-    
-    return "Alternative option unavailable, probeSim func"
+            for i in range(len(V.x1Atten)):
+                if whichField == "Ex":
+                    V.x1Atten[i][counts] =  V.Ex[inds[i]]
+            return V.x1Atten
+
+        elif af == True:
+            V.x1ColAf[counts] = val
+            return V.x1ColAf
+
+
+        elif af == False:
+           # breakpoint()
+            V.x1ColBe[counts] = val
+    else:
+        if whichField == "Ex":
+            V.Port1[counts] = V.Ex[P.materialFrontEdge]
+            V.Port2[counts] = V.Ex[P.materialRearEdge]
+            return V.Port1, V.Port2
+
+    return V.x1ColBe
+
     
 def vidMake(V, P, C_V, C_P, counts, field, whichField = "Ex"):
     # COUNTS WON'T MATCH UP WITH INDEX OF SHRUNK HISTORY. COUNTS/P.vidInterval?
@@ -70,7 +74,7 @@ def boundCondManager(V, P, C_V, C_P):
     
     #integrators call this to set up boundary conditions and call appropriate
     #features. switch case? 
-    if P.CPMLXp  == True or P.CPMLXm == True:
+    if P.CPMLXp or P.CPMLXm:
         
         C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy= BaseFDTD11.CPML_ScalingCalc(V, P, C_V, C_P)
         
@@ -86,8 +90,17 @@ def SourceManager(V, P, C_V, C_P):
     ## boolean fed into argument which chooses source to use and creates appropiately.
     if P.SineCont == True:
         Exs, Hys1 = BaseFDTD11.SmoothTurnOn(V,P)
-        Exs = np.asarray(Exs)*P.courantNo
-        Hys1 = np.asarray(Hys1)*P.courantNo
+        Exp, Hyp1 = np.zeros(P.timeSteps), np.zeros(P.timeSteps)
+        if P.nonLinMed:
+            tempfreq = P.freq_in
+            pumpFreq = tempfreq*0.8
+            Exp, Hyp1 = BaseFDTD11.SmoothTurnOn(V,P, tempfreq=pumpFreq)
+            Exp = np.asarray(Exp)*P.courantNo
+            Hyp1 = np.asarray(Hyp1)*P.courantNo
+            Exp *=0.1
+            Hyp1 *=0.01
+        Exs = np.asarray(Exs)*P.courantNo +Exp
+        Hys1 = np.asarray(Hys1)*P.courantNo +Hyp1
         #breakpoint()
         if P.TFSF ==True:
             Hys1 = Hys1*(1/P.CharImp)
@@ -156,7 +169,7 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
                     #if counts%(int(P.timeSteps/10)) == 0:
                      #   print("timestep progress:", counts, "/", P.timeSteps)
                     V.Ex =BaseFDTD11.ADE_ExUpdate(V,P, C_V, C_P, counts)
-                    if P.CPMLXp == True or P.CPMLXm == True: # Go into cpml field updates to choose x+ and x-
+                    if P.CPMLXp or P.CPMLXm: # Go into cpml field updates to choose x+ and x-
                         C_V.psi_Ex, V.Ex  = BaseFDTD11.CPML_Psi_e_Update(V,P, C_V, C_P)
 
                     ## SOURCE MANAGER COMES IN HERE
@@ -166,7 +179,7 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
                         V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
                     ####
                     V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
-                    if P.CPMLXp == True or P.CPMLXm == True:
+                    if P.CPMLXp or P.CPMLXm:
                        C_V.psi_Hy, V.Hy = BaseFDTD11.CPML_Psi_m_Update(V,P, C_V, C_P)
 
                     ##################
@@ -176,7 +189,6 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
                     #########################
 
 
-
                     if counts >0:
                         if counts % P.vidInterval ==0:
                             if i == 1:
@@ -184,7 +196,6 @@ def IntegratorFreeSpace1D(V,P,C_V, C_P, probeReadFinishBe, probeReadStartAf):
 
                     # option to not store history, and even when storing, only store in
                     #intervals
-
 
 
                     if i == 0:
@@ -219,15 +230,15 @@ def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
 
     lamCont, lamDisc, diff, V.plasmaFreqE, fix = gStab.spatialStab(P.timeSteps,P.Nz,P.dz, P.freq_in, P.delT, V.plasmaFreqE, V.omega_0E, V.gammaE)
     Exs, Hys = SourceManager(V, P, C_V, C_P)
-    Exs = Sig_Mod(V,P, Exs)
-    Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp)
+    #Exs = Sig_Mod(V,P, Exs)
+    #Hys = Sig_Mod(V,P, Hys, AmpMod = 1/P.CharImp)
 
     for counts in range(0,P.timeSteps):
 
 
-       if i == 1:
-            V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
-            V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
+       #if i == 1:
+            #V.tempTempVarPol, V.tempVarPol, V.tempVarE, V.tempTempVarE, V.tempTempVarHy, V.tempVarHy, V.tempTempVarJx, V.tempVarJx, C_V.tempTempVarPsiEx, C_V.tempVarPsiEx, C_V.tempTempVarPsiHy, C_V.tempVarPsiHy = BaseFDTD11.ADE_TempPolCurr(V,P, C_V, C_P)
+            #V.polarisationCurr = BaseFDTD11.ADE_PolarisationCurrent_Ex(V, P, C_V, C_P, counts)
 
        V.Ex =BaseFDTD11.ADE_ExUpdate(V, P, C_V, C_P, counts)
             # V.Jx = BaseFDTD11.ADE_JxUpdate(V,P, C_V, C_P)
@@ -239,13 +250,10 @@ def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
 
        if P.TFSF == True:
             V.Hy[P.nzsrc-1] -= Hys[counts]/P.courantNo
-
-
-
        V.Dx = BaseFDTD11.ADE_DxUpdate(V, P, C_V, C_P)  # Linear bit
       # V.Ex =BaseFDTD11.ADE_ExCreate(V, P, C_V, C_P)
        V.Acubic = BaseFDTD11.AcubicFinder(V,P)
-       if not counts % 200:
+       if not counts % 50:
            print(counts)
        V.Ex = BaseFDTD11.NonLinExUpdate(V,P)
        V.Hy = BaseFDTD11.ADE_HyUpdate(V,P, C_V, C_P)
@@ -256,6 +264,8 @@ def IntegratorNL1D(V,P,C_V,C_P, probeReadFinishBe, probeReadStartAf):
            if counts % P.vidInterval ==0:
                if i == 1:
                    V.Ex_History =vidMake(V, P, C_V, C_P, counts, V.Ex, whichField = "Ex")
+       V.Port1, V.Port2 = probeSim(V, P, C_V, C_P, counts, nonlinear=True)
+
 
 
     return V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe,  V.x1ColAf

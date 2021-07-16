@@ -6,12 +6,11 @@ as well as any memory saving methods like sparse matrices etc.
 BC functions called as well
 If GUI is incorporated it will act as a direct interface with this script.
 """
-
 import numpy as np
 import scipy as sci
 from scipy import sparse 
 import matplotlib.pylab as plt
-import genericStability as gStab
+import Tests.genericStability as gStab
 from tqdm import tqdm 
 
 #from TransformHandler import genFourierTrans as gft
@@ -28,7 +27,7 @@ from numba.types import DictType, List, string, optional
 import time as tim
 import timeit
 #from memory_profiler import profile
-import BulkTest as bt
+import Tests.BulkTest as bt
 
 #from varname import nameof
 import sys
@@ -44,7 +43,7 @@ freq = 300  # Hz
 sys.path[0] = os.getcwd()
 import BaseFDTD11
 import Environment_Setup as envDef
-from Validation_Physics import VideoMaker 
+from Tests.Validation_Physics import VideoMaker
  
 import TransformHandler as transH
 import Solver_Engine as SE
@@ -61,8 +60,6 @@ class Reporter(object):
         self.dict1 = {"": ""}
         
     def printer(self, item ="", name ="", show = False):
-        
-        
         self.dict1[name] = item 
         
         # write this to file in organised manner, module for this?
@@ -140,7 +137,9 @@ specV = [('Nz', int32),
     ('JxRaman', float64[:]),
     ('Acubic', float64[:]),
     ('cubPoly', complex128[:,:]),
-    ('roots', complex128[:])]
+    ('roots', complex128[:]),
+    ('Port1', float64[:]),
+    ('Port2',  float64[:])]
 
          
 @jclass(specV)
@@ -199,15 +198,16 @@ class Variables(object):
         self.Pbar3 = np.zeros(Nz)
         self.nonLin3gammaE = 0
         self.nonLin3Omega_0E = 6e9
-        self.chi1Stat = 0.69617
-        self.chi3Stat = 7e-1
+        self.chi1Stat = np.sqrt(1.2)-1
+        self.chi3Stat = 1e-3
         self.JxKerr = np.zeros(Nz)
         self.JxRaman = np.zeros(Nz)
         self.Acubic =np.zeros(Nz)
         self.cubPoly =np.zeros(4*Nz, dtype=complex128).reshape(Nz, 4)
         self.roots =np.zeros(4, dtype=complex128)
-        
-        
+        #self.dictRep = {}
+        self.Port1 = np.zeros(timeSteps)
+        self.Port2 = np.zeros(timeSteps)
 
     def __str__(self):
         return 'Contains data that will change during sim'
@@ -280,7 +280,8 @@ specP=[('Nz', int32),
     ('vidMake', boolean ),
     ('vidInterval', int32), 
     ('atten', boolean),
-    ('julia', boolean)]
+    ('julia', boolean),
+    ('testMode', boolean)]
 
 
 @jclass(specP)
@@ -332,6 +333,7 @@ class Params(object):
         self.vidInterval = 50
         self.atten = False
         self.julia = False
+        self.testMode = False
 
     def __str__(self):
         return 'Class containing all values that remain constant throughout a sim' 
@@ -348,14 +350,14 @@ specCP = [('kappaMax',float32),
 @jclass(specCP)   # with PLRC-CPML alpha seems to have larger stable range
 class CPML_Params(object):  # good params: KappaMax , sigmaEMax ,alphamax , nlam , 
     def __init__(self, dz):
-        self.kappaMax =2 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
+        self.kappaMax =1 # 'Stretching co-ordinate of pml, to minimise numerical dispersion set it as 1' : DOI: 10.22190/FUACR1703229G see conclusion
         self.r_scale =4 #Within ideal bounds see Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17 (scaling power is called 'm' )
         self.r_a_scale=1
-        self.sigmaEMax= 0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.sigmaEMax= 0.5*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # Within ideal bounds for value, : Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
         self.sigmaHMax =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))#1.1*sigmaOpt # See International Journal of Computer Science and Network Security, VOL.18 No.12, December 2018, page 4 right hand side.
         self.sigmaOpt  =self.sigmaEMax#0.75*(0.8*(1)/(dz*(sci.constants.mu_0/sci.constants.epsilon_0)**0.5))
     #Optimal value of pml conductivity at far end of pml: DOI: 10.22190/FUACR1703229G see equation 13
-        self.alphaMax=0.1# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
+        self.alphaMax=0.05# with bounds of ideal cpml alpha max, complex frequency shift parameter, Journal of ELECTRICAL ENGINEERING, VOL 68 (2017), NO1, 47–53, see paragraph under eqn. 17
     
     def __repr__(self):
         return (f'{self.__class__.__name__}')
@@ -451,8 +453,6 @@ def Controller(V, P, C_V, C_P):
     probeReadStartAf = int(P.timeSteps*0.05)  # More rigorous on/off criteria
     V.x1ColBe = np.zeros(P.timeSteps)
     V.x1ColAf = np.zeros(P.timeSteps)
-
-
     if P.LorentzMed:
          V.Ex, V.Hy, Exs, Hys,  C_V.psi_Ex,C_V.psi_Hy, V.x1ColBe, V.x1ColAf = SE.IntegratorLinLor1D(V, P, C_V, C_P, probeReadFinishBe, probeReadStartAf)
     elif P.FreeSpace:
@@ -624,10 +624,10 @@ def __Main__():
     print("Code started at: ", startedTime)
     loopMode =False
     MORmode = False
-    domainSize=0.4   #metres
-    lowLimTim = 2000
-    highLimTim = 3000 # More rigorous via speed of wave and dist 
-    freq_in = 6e9
+    domainSize=0.7   #metres
+    lowLimTim = 7000
+    highLimTim = 8000 # More rigorous via speed of wave and dist
+    freq_in = 9e9
     delayMOR =20
     LorMed = False
     nonLinMed = True
@@ -642,19 +642,19 @@ def __Main__():
     C_V = CPML_Variables(P.Nz, P.timeSteps)
     
     Rep = Reporter() 
-    P.atten = True 
+    P.atten = False
     P.epsRe =1# 0.917**2
     P.CPMLXp =True    ### CHANGE TO Z FOR PROP DIRECTION
     P.CPMLXm =True
     P.TFSF = True
     P.Gaussian =False
     P.SineCont = True   # Set up smoothturn on for multiple repeats
-    P.Periods = 5
+    P.Periods = 1000
     P.LorentzMed=LorMed # MAKE SURE EPSRE IS 1
     P.nonLinMed = nonLinMed
     ticK = tim.perf_counter()
     P.julia = False
-
+    P.testMode = True
     if P.nonLinMed == True:
         P.FreeSpace = False
         P.LorentzMed = False   # Redundant code because first batch handles all 
@@ -665,15 +665,17 @@ def __Main__():
     
   # Use previous results of sweep to speed up next run? 
     V, P, C_V, C_P, Exs, Hys = LoopedSim(Rep,V,P,C_V, C_P, P.MORmode, domainSize, lowLimTim, highLimTim, loop = loopMode, Low =P.freq_in, Interval = 5e8)
+    print("arrived")
+    freqdom = transH.CZT(P.freq_in/50, P.freq_in*20, 1/P.delT, V.Port2, np.arange(P.timeSteps)*P.delT, P.timeSteps)
     tocK = tim.perf_counter()
-    Rep.printer(str(tocK-ticK), "LoopMainTime")
-    templateEnv = env(loader = fsl('.'))
+    #Rep.printer(str(tocK-ticK), "LoopMainTime")
+    templateEnv = env(loader = fsl('..'))
     #dict1 = Rep.dict1
-    template = templateEnv.get_template("Template_Report.txt")
-    output = template.render(dict1= Rep.dict1)
+    #template = templateEnv.get_template("Template_Report.txt")
+    #output = template.render(dict1= Rep.dict1)
     #Rep.write_report(output)
-    with open(my_path +"\\" + "Report_File.txt", "w+") as reader:
-        reader.write(output)
+   #with open(my_path +"\\" + "Report_File.txt", "w+") as reader:
+      #  reader.write(output)
     
     #print(tocK-ticK, "Time for Looped sim to run non-loop")
     return V, P, C_P, C_V, Rep
@@ -702,7 +704,9 @@ x1ColBe = V.x1ColBe
 x1ColAf = V.x1ColAf
 epsilon = V.epsilon
 mu = V.mu
-polarisationCurr= V.polarisationCurr
+polarisationCurr=V.polarisationCurr
+Port1 = V.Port1
+Port2 = V.Port2
 
 ###parameters
 

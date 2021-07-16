@@ -9,6 +9,7 @@ This script will eventually just contain the update equations and animation
 
 
 """
+import time
 
 import numpy as np
 import matplotlib.pylab as plt
@@ -19,7 +20,8 @@ from numba import njit as nj
 from numba import jit,prange
 
 from numba import int32, float32, int64, float64, boolean, complex128
-
+from Tests.Integration_Tester import testerFuncVector as tfv
+import CubicEquationSolver
 
 
 ### CONSIDER IMPLEMENTING DIFFERENT SOURCES RF, gaussian, ricker, as well as sine pulse
@@ -40,7 +42,7 @@ def FieldInit(V,P):
             if type(P.timeSteps) != int:
                 raise TypeError('Number of timeSteps must be positive integer valued')
                 break
-            if P.timeSteps > 2**15:
+            if P.timeSteps > 2**17:
                 raise ValueError('timeSteps max too large')
                 break
             if P.Nz > 25000:
@@ -99,16 +101,15 @@ def SineCont(V,P, rep, interv):
 def Ricker(V,P):
     pass
 
-
-
-
-
-
-def SmoothTurnOn(V,P):   # prevents discontinuity in source pattern from causing instability
-    ppw =  P.c0 /(P.freq_in*P.dz)
+def SmoothTurnOn(V,P, tempfreq=0):   # prevents discontinuity in source pattern from causing instability
+    if tempfreq != 0:
+        frq = tempfreq
+    else:
+        frq = P.freq_in
+    ppw =  P.c0 /(frq*P.dz)
     Exs =[]
     Hys = []
-    
+
     for timer in range(P.timeSteps):
         if(timer*P.delT < P.period*P.Periods):
             Exs.append(float(np.sin(2.0*np.pi/ppw*(P.courantNo*timer))))
@@ -191,7 +192,7 @@ forlocals2 ={'Hys' : float64[:], 'counts' : int32} ### for tf/sf
 def ExTfSfCorr(V,P, counts, Hys):
     V.Ex[P.nzsrc] += Hys[counts]
     return V.Ex[P.nzsrc]
-#@nj
+@nj
 def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml 
     C_V.kappa_Ex =np.ones(P.Nz+1)
     C_V.kappa_Hy = np.ones(P.Nz+1)
@@ -218,7 +219,7 @@ def CPML_FieldInit(V,P, C_V, C_P):    #initialise cpml
     return C_V
 
 
-#@nj
+@nj
 def CPML_ScalingCalc(V, P, C_V, C_P):
     kappa_Ex_n = np.ones(P.pmlWidth)
     sigma_Ex_n = np.zeros(P.pmlWidth)
@@ -265,12 +266,12 @@ def CPML_ScalingCalc(V, P, C_V, C_P):
     C_V.kappa_Hy = C_V.kappa_Ex
     C_V.sigma_Hy = C_V.sigma_Ex
     C_V.alpha_Hy = C_V.alpha_Ex
-    #breakpoint()
+
     
         
     return C_V.sigma_Ex, C_V.sigma_Hy, C_V.alpha_Ex,  C_V.alpha_Hy, C_V.kappa_Ex, C_V.kappa_Hy
 
-#@nj
+@nj
 def CPML_Ex_RC_Define(V, P, C_V, C_P):
     #window = sign.hann(P.Nz+1)
     
@@ -279,19 +280,19 @@ def CPML_Ex_RC_Define(V, P, C_V, C_P):
     
     C_V.ceX[:P.pmlWidth] = (C_V.beX[:P.pmlWidth]-1)*C_V.sigma_Ex[:P.pmlWidth]/((C_V.sigma_Ex[:P.pmlWidth]*C_V.kappa_Ex[:P.pmlWidth]+C_V.alpha_Ex[:P.pmlWidth]*C_V.kappa_Ex[:P.pmlWidth]*C_V.kappa_Ex[:P.pmlWidth]))
     C_V.ceX[len(V.Ex)-P.pmlWidth:] = (C_V.beX[len(V.Ex)-P.pmlWidth:]-1)*C_V.sigma_Ex[len(V.Ex)-P.pmlWidth:]/((C_V.sigma_Ex[len(V.Ex)-P.pmlWidth:]*C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]+C_V.alpha_Ex[len(V.Ex)-P.pmlWidth:]*C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]*C_V.kappa_Ex[len(V.Ex)-P.pmlWidth:]))
-    #breakpoint()
+
         
    # C_V.beX = sign.convolve(C_V.beX, window, mode= 'same')/np.sum(window)  
     return C_V.beX, C_V.ceX
 
-#@nj
+@nj
 def CPML_HY_RC_Define(V, P, C_V, C_P):
     C_V.bmY[:P.pmlWidth] = np.exp(-((C_V.sigma_Hy[:P.pmlWidth]*P.delT/(C_V.kappa_Hy[:P.pmlWidth]*P.permit_0))+((C_V.alpha_Hy[:P.pmlWidth]*P.delT)/P.permit_0))) 
     C_V.bmY[len(V.Hy)-P.pmlWidth:] = np.exp(-((C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]*P.delT/(C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]*P.permit_0))+((C_V.alpha_Hy[len(V.Hy)-P.pmlWidth:]*P.delT)/P.permit_0))) 
     
     C_V.cmY[:P.pmlWidth] = (C_V.bmY[:P.pmlWidth]-1)*C_V.sigma_Hy[:P.pmlWidth]/((C_V.sigma_Hy[:P.pmlWidth]*C_V.kappa_Hy[:P.pmlWidth]+C_V.alpha_Hy[:P.pmlWidth]*C_V.kappa_Hy[:P.pmlWidth]*C_V.kappa_Hy[:P.pmlWidth])*P.dz)
     C_V.cmY[len(V.Hy)-P.pmlWidth:] = (C_V.bmY[len(V.Hy)-P.pmlWidth:]-1)*C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]/((C_V.sigma_Hy[len(V.Hy)-P.pmlWidth:]*C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]+C_V.alpha_Hy[len(V.Hy)-P.pmlWidth:]*C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:]*C_V.kappa_Hy[len(V.Hy)-P.pmlWidth:])*P.dz)
-    #breakpoint()
+
     return C_V.bmY, C_V.cmY
 
 
@@ -328,7 +329,7 @@ def CPML_Hy_Update_Coef(V,P, C_V, C_P):
         C_V.C3[nz] = P.delT/  ((1+C_V.mLoss_CPML[nz])*P.permea_0)
     return C_V.mLoss_CPML, C_V.C1, C_V.C2, C_V.C3   
 
-#@nj
+@nj
 def denominators(V, P, C_V, C_P):
     jj = P.pmlWidth
        # set denom as vector of ones default
@@ -360,6 +361,7 @@ def denominators(V, P, C_V, C_P):
 forLocals = {'zeta0': float64[:], 'zeta1':float64[:]}
 
 #@jit(nopython = True, locals=forLocals, debug =True)
+@nj
 def CPML_Psi_e_Update(V,P, C_V, C_P): 
    #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
    #zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
@@ -370,20 +372,13 @@ def CPML_Psi_e_Update(V,P, C_V, C_P):
    if P.CPMLXp ==True:
        for nz in range(len(V.Ex)- P.pmlWidth, len(V.Ex)): 
             C_V.psi_Ex[nz] = C_V.beX[nz]*C_V.psi_Ex[nz] + C_V.ceX[nz]*(V.Hy[nz]-V.Hy[nz-1])
-            V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz] 
-   """
-   if np.sum(np.isnan(C_V.psi_Ex))>0:
-        breakpoint()
-   if np.sum(np.isinf(C_V.psi_Ex))>0:
-        breakpoint()            
-   if np.sum(np.abs(C_V.psi_Ex)) > 100:
-       breakpoint()
-   """
+            V.Ex[nz] = V.Ex[nz] - C_V.Cb[nz]*C_V.psi_Ex[nz]
    return C_V.psi_Ex, V.Ex
 
 
 ########################### DELIBERATELY BROKEN, FIX THIS TOMORROW!
 #@jit(nopython = True, locals=forLocals, debug =True)
+@nj
 def CPML_Psi_m_Update(V,P, C_V, C_P): 
     #zeta0 =(-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(1-np.exp(-(C_V.alpha_Ex*P.delT)))
     #zeta1 = (-C_V.sigma_Ex/(C_V.alpha_Ex*C_V.kappa_Ex*C_V.kappa_Ex+C_V.sigma_Ex*C_V.kappa_Ex))*(C_V.alpha_Ex/P.delT)*(1-(1+C_V.alpha_Ex*P.delT)*np.exp(-(C_V.alpha_Ex*P.delT)))
@@ -395,14 +390,6 @@ def CPML_Psi_m_Update(V,P, C_V, C_P):
        for nz in range(len(V.Ex)- P.pmlWidth, len(V.Ex)-1): 
             C_V.psi_Hy[nz] = C_V.bmY[nz]*C_V.psi_Hy[nz] + C_V.cmY[nz]*(V.Ex[nz+1]-V.Ex[nz])
             V.Hy[nz] = V.Hy[nz] +C_V.C2[nz]*C_V.psi_Hy[nz]
-    """
-    if np.sum(np.isnan(C_V.psi_Hy))>0:
-        breakpoint()
-    if np.sum(np.isinf(C_V.psi_Hy))>0:
-        breakpoint()
-    if np.sum(np.abs(C_V.psi_Ex)) > 100:
-        breakpoint()
-    """
     return C_V.psi_Hy, V.Hy
 
 
@@ -804,15 +791,15 @@ def MUR1DEx(V,P, C_V, C_P):
 
 #Andrey Sukhorukov, Comparative study of FDTD adopted...
 locs = {"cub": float64, "qua":float64, "one": float64, "nz": int32}
-@nj(locals=locs, nogil =True )
+@nj(locals=locs)
 def Nonlin_Eqn_Setup(V, P, cub, qua, one, nz):
-    out = np.array([cub, qua, one, -np.abs(V.Dx[nz]/P.permit_0)**2])
+    V.cubPoly[nz] = np.array([cub, qua, one, -np.abs(V.Dx[nz]/P.permit_0)**2])
     #print(out.dtype)
-    for nz in range(len(out)):
-        V.cubPoly[nz] = complex128(out[nz])
-    return V.cubPoly[nz,:]
+    #for i in range(len(out)):
+       # V.cubPoly[nz][i] =
+    return V.cubPoly[nz]
 
-@nj(nogil=True)
+#@nj
 def AcubicFinder(V,P):
     epsNum = (V.plasmaFreqE*V.plasmaFreqE)
     epsDom = (V.omega_0E*V.omega_0E-(2*np.pi*P.freq_in*2*np.pi*P.freq_in) + 1j*V.gammaE*2*np.pi*P.freq_in)
@@ -821,48 +808,72 @@ def AcubicFinder(V,P):
     cub = (V.alpha3*V.chi3Stat)**2
     qua = 2*np.real(V.alpha3*epsilon*V.chi3Stat)
     one = np.abs(epsilon)**2
-    for nz in range(P.materialFrontEdge, P.materialRearEdge):
-        V.cubPoly[nz,:] = Nonlin_Eqn_Setup(V, P, cub, qua, one, nz)
+    tim1 = time.perf_counter()
+    for nz in prange(P.materialFrontEdge, P.materialRearEdge):
+        V.cubPoly[nz] = Nonlin_Eqn_Setup(V, P, cub, qua, one, nz)
 
     #outp = Nonlin_Cubic_Solver(V, P)
     #breakpoint()
+
     V.Acubic[P.materialFrontEdge:P.materialRearEdge] = np.real(Nonlin_Cubic_Solver(V,P)[P.materialFrontEdge:P.materialRearEdge])
+
     return V.Acubic
         
 # run repeatedly from E update each time A is desired.
-
-@nj(nogil = True, parallel=True)
+#@nj(locals={"out": complex128[:]})
 def Nonlin_Cubic_Solver(V, P):
-    out = complex128([0])
-    for nz in range(P.Nz - 1):
-        out = np.append(out, complex128(0))
-    for jj in prange(P.materialRearEdge, P.materialRearEdge):
-        V.roots = np.roots(V.cubPoly[jj])
-        for i in prange(len(V.roots)):
-            if np.real(V.roots).any() >=0:
-                comp = np.imag(V.roots[i])
-                if comp >=0:
-                    out[jj]= V.roots[i]
-                    break
+    out = np.zeros(P.Nz)
+    for jj in range(P.materialFrontEdge, P.materialRearEdge):
+        #print("before roots")
+        a = V.cubPoly[jj][0]
+        b = V.cubPoly[jj][1]
+        c = V.cubPoly[jj][2]
+        d = V.cubPoly[jj][3]
+
+
+        if abs(d)> 1e-8:
+            #print("shouldn't be here yet")
+            CS= CubicEquationSolver.CubicSolver(a,b,c,d)
+            V.roots = CubicEquationSolver.solve(CS)
+            out[jj] = V.roots[0]
+    """
+            for i in prange(len(V.roots)):
+                if abs(np.real(V.roots[i])) >=0:
+                    comp = np.imag(V.roots[i])
+                    if abs(comp) <1e-40:
+                        out[jj]= np.real(V.roots[i])
+                    else:
+                        out[jj]= 0
                 else:
-                    out[jj]= complex(0,0)
-            else:
-                out[jj]= complex(0,0)   # Returns V.Acubic[nz]
+                    out[jj]= 0   # Returns V.Acubic[nz]
+        else:
+            out[jj] =0
+    """
+
     return out
 
-#forLocs ={"epsNum": float64, "epsDom": float64, "eps0": float64, "epsilon" : float64, "nz": int32}
+#forLocs ={'check' : bool}
 #@nj(locals = forLocs, nogil=True)
+#@jit(locals ={"check":  np.bool_})
+@nj
 def NonLinExUpdate(V,P):
     #epsilon =
-    epsNum = (V.plasmaFreqE*V.plasmaFreqE)
-    epsDom = (V.omega_0E*V.omega_0E-(2*np.pi*P.freq_in*2*np.pi*P.freq_in) + 1j*V.gammaE*2*np.pi*P.freq_in)
+    #epsNum = (V.plasmaFreqE*V.plasmaFreqE)
+    #epsDom = (V.omega_0E*V.omega_0E-(2*np.pi*P.freq_in*2*np.pi*P.freq_in) + 1j*V.gammaE*2*np.pi*P.freq_in)
     eps0 = P.permit_0   
-    epsilon = 1 + epsNum/epsDom
-    
+    epsilon = np.sqrt(1.2)#1 + epsNum/epsDom
+    #matching: A simple and rigorous verification technique for nonlinearFDTD algorithms by optical parametric four-wave mixing
+    prev = V.Ex
+   # check: np.bool_ = np.max(abs(V.Ex[P.materialRearEdge]))>0
     for nz in range(P.materialFrontEdge, P.materialRearEdge):
         V.Ex[nz] = V.Dx[nz]/(eps0*np.real(epsilon) +eps0*V.chi3Stat*V.Acubic[nz])
-    #breakpoint()
-    #E = D/(epsilon zero*epsilon + eps0*chi3*A)
+    aft = V.Ex
+    if abs(aft.sum()-prev.sum()) >0:
+        print("After and previous are different")
+    #if P.testMode:
+     #   dictRep = {}
+      #  dictRep = tfv(prev, aft)
+
     return V.Ex
 
 
